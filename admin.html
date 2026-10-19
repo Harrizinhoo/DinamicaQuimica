@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control SQL en Tiempo Real · Dinámica Química &amp; Biológica</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            background: radial-gradient(circle at 50% 15%, #1e293b 0%, #090d16 80%);
+            padding: 24px 32px;
+            min-height: 100vh;
+            overflow-y: auto;
+        }
+        .admin-page-container {
+            max-width: 1380px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+            z-index: 2;
+        }
+        .admin-top-bar {
+            background: linear-gradient(180deg, rgba(30, 41, 59, 0.96) 0%, rgba(15, 23, 42, 0.96) 100%);
+            border: 2px solid var(--gold-primary);
+            border-radius: 16px;
+            padding: 18px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7), 0 0 25px var(--gold-glow);
+        }
+        .admin-title-group h1 {
+            font-family: var(--font-heading);
+            color: var(--gold-primary);
+            font-size: 1.55rem;
+            margin-bottom: 4px;
+        }
+        .live-indicator-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: #34d399;
+            font-weight: 600;
+        }
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            background: #10b981;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #10b981;
+            animation: dotPulse 1.2s infinite alternate;
+        }
+        @keyframes dotPulse {
+            from { transform: scale(0.8); opacity: 0.6; }
+            to { transform: scale(1.25); opacity: 1; }
+        }
+        .admin-table-card {
+            background: rgba(15, 23, 42, 0.92);
+            border: 2px solid #334155;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .admin-table-wrapper-full {
+            overflow-x: auto;
+            border: 1px solid #334155;
+            border-radius: 12px;
+        }
+        .level-progress-mini {
+            width: 110px;
+            height: 8px;
+            background: #1e293b;
+            border-radius: 99px;
+            overflow: hidden;
+            margin-top: 4px;
+            border: 1px solid #475569;
+        }
+        .level-progress-mini-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #38bdf8, #fbbf24);
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-page-container">
+        <!-- CABECERA DEL PANEL DE ADMINISTRADOR EN VENTANA INDEPENDIENTE -->
+        <header class="admin-top-bar">
+            <div class="admin-title-group">
+                <h1>👑 Panel de Control SQL — Estadísticas de Jugadores en Tiempo Real</h1>
+                <div class="live-indicator-row">
+                    <span class="pulse-dot"></span>
+                    <span id="sync-status-label">Sincronización SQL Activa en Tiempo Real · Consultando Base de Datos de la Mazmorra</span>
+                </div>
+            </div>
+            <div class="admin-header-actions">
+                <button id="btn-seed-demo" class="util-btn" title="Insertar jugadores de prueba si está vacía">⚡ Refrescar Ahora</button>
+                <button id="btn-export-sql" class="util-btn" title="Descargar archivo .sql">💾 Exportar Base de Datos (.sql)</button>
+                <button id="btn-back-game" class="btn-epic-next" style="padding: 9px 18px; font-size: 0.85rem;">🎮 Ir a la Ventana del Juego</button>
+            </div>
+        </header>
+
+        <!-- TARJETAS KPI GLOBALES CON TRACKING DE PUNTOS -->
+        <section class="admin-kpi-grid" style="grid-template-columns: repeat(5, 1fr);">
+            <div class="kpi-box">
+                <span class="kpi-label">Total Jugadores Registrados (ID)</span>
+                <strong id="kpi-total-players" class="kpi-value">0</strong>
+            </div>
+            <div class="kpi-box">
+                <span class="kpi-label">Puntuación Máxima / Promedio</span>
+                <strong id="kpi-top-score" class="kpi-value" style="color: #fde047;">🏆 0 pts</strong>
+            </div>
+            <div class="kpi-box">
+                <span class="kpi-label">Nivel Promedio del Grupo</span>
+                <strong id="kpi-avg-level" class="kpi-value">Nivel 1.0</strong>
+            </div>
+            <div class="kpi-box">
+                <span class="kpi-label">Precisión Global de Respuestas</span>
+                <strong id="kpi-global-accuracy" class="kpi-value">0%</strong>
+            </div>
+            <div class="kpi-box">
+                <span class="kpi-label">Victorias Contra el Golem (Nvl 15)</span>
+                <strong id="kpi-completed-games" class="kpi-value">0</strong>
+            </div>
+        </section>
+
+        <!-- CONSOLA SQL INTERACTIVA Y TABLA COMPLETA DE JUGADORES -->
+        <section class="admin-table-card">
+            <div class="sql-query-console">
+                <div class="console-header">
+                    <span>🔍 Consola de Consulta SQL en Vivo (Tabla <code>jugadores</code> con Tracking de Puntos):</span>
+                    <div class="console-btns">
+                        <button id="btn-sql-all" class="mini-sql-btn">SELECT * (Orden por ID Ascendente 1..N)</button>
+                        <button id="btn-sql-ranking" class="mini-sql-btn">🏆 SELECT Ranking por Puntos y Nivel</button>
+                        <button id="btn-sql-active" class="mini-sql-btn">SELECT Jugadores en Partida</button>
+                    </div>
+                </div>
+                <div class="sql-input-row">
+                    <input type="text" id="custom-sql-input" class="sql-code-input" value="SELECT id, nombre, puntos, puntos_nivel_disp, bonus_rapidos, nivel_actual, pv, pv_max, pociones, aciertos, errores, escudo, piedra, alas, llave, estado, fecha_registro, ultima_actualizacion FROM jugadores ORDER BY id ASC;" />
+                    <button id="btn-exec-sql" class="btn-exec-sql">▶ Ejecutar Consulta SQL</button>
+                </div>
+            </div>
+
+            <div class="admin-table-wrapper-full">
+                <table class="sql-results-table">
+                    <thead>
+                        <tr>
+                            <th>ID (Ascendente)</th>
+                            <th>Nombre del Jugador</th>
+                            <th>Puntos Totales</th>
+                            <th>Tracking Puntos Nivel &amp; Bonus</th>
+                            <th>Nivel Actual y Bioma</th>
+                            <th>Salud (PV)</th>
+                            <th>Pociones</th>
+                            <th>Aciertos</th>
+                            <th>Errores (-20%)</th>
+                            <th>Precisión</th>
+                            <th>Reliquias Mágicas</th>
+                            <th>Estado en la Mazmorra</th>
+                            <th>Hora Registro</th>
+                            <th>Última Actividad</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-players-tbody">
+                        <!-- Filas inyectadas en tiempo real desde SQL -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const DB_STORAGE_KEY = "dinamica_quimica_sqlite_db_v1";
+        const DB_FALLBACK_KEY = "dinamica_quimica_records_fallback_v1";
+
+        const BIOME_NAMES = {
+            1: "Pantano Microbiano",
+            2: "Pantano Microbiano (Lab)",
+            3: "Bosque Simbiótico",
+            4: "Bosque Simbiótico (Liquen)",
+            5: "Reino del Ecosistema (Río)",
+            6: "Reino del Ecosistema (Cadena)",
+            7: "Castillo de la Genética (ADN)",
+            8: "Castillo de la Genética (Dragón)",
+            9: "Desierto Biogeoquímico (Agua)",
+            10: "Desierto Biogeoquímico (Carbono)",
+            11: "Torre del Sistema Nervioso (Cerebelo)",
+            12: "Torre del Sistema Nervioso (Médula)",
+            13: "Cueva Morfológica (Murciélago)",
+            14: "Cueva Morfológica (Branquias)",
+            15: "Santuario del Golem (Jefe Final)"
+        };
+
+        let SQL_ENGINE = null;
+
+        async function initSqlEngine() {
+            try {
+                if (typeof window.initSqlJs === "function") {
+                    SQL_ENGINE = await window.initSqlJs({
+                        locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+                    });
+                }
+            } catch (e) {
+                console.warn("Usando lectura directa de registros SQL en localStorage:", e);
+            }
+            renderDashboard();
+        }
+
+        function queryDatabase(sqlQuery) {
+            // Intentar primero con el binario SQLite de sql.js
+            const savedBase64 = localStorage.getItem(DB_STORAGE_KEY);
+            if (SQL_ENGINE && savedBase64) {
+                try {
+                    const binary = Uint8Array.from(atob(savedBase64), c => c.charCodeAt(0));
+                    const db = new SQL_ENGINE.Database(binary);
+                    try { db.run("ALTER TABLE jugadores ADD COLUMN puntos INTEGER NOT NULL DEFAULT 0;"); } catch (e) {}
+                    try { db.run("ALTER TABLE jugadores ADD COLUMN puntos_nivel_disp INTEGER NOT NULL DEFAULT 500;"); } catch (e) {}
+                    try { db.run("ALTER TABLE jugadores ADD COLUMN bonus_rapidos INTEGER NOT NULL DEFAULT 0;"); } catch (e) {}
+                    const res = db.exec(sqlQuery);
+                    db.close();
+                    if (!res || res.length === 0) return [];
+                    const cols = res[0].columns;
+                    return res[0].values.map(vals => {
+                        const obj = {};
+                        cols.forEach((c, i) => (obj[c] = vals[i]));
+                        return obj;
+                    });
+                } catch (err) {
+                    console.warn("Error en consulta SQL personalizada, mostrando tabla completa:", err);
+                }
+            }
+
+            // Respaldo relacional JSON
+            try {
+                const raw = localStorage.getItem(DB_FALLBACK_KEY);
+                const rows = raw ? JSON.parse(raw) : [];
+                if (sqlQuery.toUpperCase().includes("DESC")) {
+                    return rows.sort((a, b) => (b.puntos || 0) - (a.puntos || 0) || b.nivel_actual - a.nivel_actual || b.aciertos - a.aciertos);
+                }
+                return rows.sort((a, b) => a.id - b.id);
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function renderDashboard(customQuery) {
+            const sqlInput = document.getElementById("custom-sql-input");
+            const activeQuery = customQuery || sqlInput.value || "SELECT * FROM jugadores ORDER BY id ASC;";
+            const rows = queryDatabase(activeQuery);
+            const allPlayers = queryDatabase("SELECT * FROM jugadores ORDER BY id ASC;");
+
+            // Actualizar KPIs globales incluyendo Tracking de Puntos
+            document.getElementById("kpi-total-players").textContent = allPlayers.length;
+            const kpiTopScore = document.getElementById("kpi-top-score");
+            if (allPlayers.length > 0) {
+                const maxPts = Math.max(...allPlayers.map(p => Number(p.puntos) || 0));
+                const avgPts = Math.round(allPlayers.reduce((acc, p) => acc + (Number(p.puntos) || 0), 0) / allPlayers.length);
+                if (kpiTopScore) {
+                    kpiTopScore.textContent = `🏆 Máx: ${maxPts} | Prom: ${avgPts}`;
+                }
+
+                const avg = (allPlayers.reduce((acc, p) => acc + (Number(p.nivel_actual) || 1), 0) / allPlayers.length).toFixed(1);
+                document.getElementById("kpi-avg-level").textContent = `Nivel ${avg} / 15`;
+
+                const hits = allPlayers.reduce((acc, p) => acc + (Number(p.aciertos) || 0), 0);
+                const miss = allPlayers.reduce((acc, p) => acc + (Number(p.errores) || 0), 0);
+                const accPct = hits + miss > 0 ? ((hits / (hits + miss)) * 100).toFixed(1) : "100.0";
+                document.getElementById("kpi-global-accuracy").textContent = `${accPct}%`;
+
+                const wins = allPlayers.filter(p => String(p.estado).includes("Victoria")).length;
+                document.getElementById("kpi-completed-games").textContent = wins;
+            } else {
+                if (kpiTopScore) kpiTopScore.textContent = "🏆 0 pts";
+                document.getElementById("kpi-avg-level").textContent = "Nivel 1.0";
+                document.getElementById("kpi-global-accuracy").textContent = "0%";
+                document.getElementById("kpi-completed-games").textContent = "0";
+            }
+
+            const tbody = document.getElementById("admin-players-tbody");
+            tbody.innerHTML = "";
+
+            if (rows.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="14" style="text-align:center; padding: 28px; color:#94a3b8;">
+                            No hay jugadores registrados todavía en la base de datos SQL. Cuando un estudiante se registre en la ventana del juego, aparecerá aquí en tiempo real con su ID #1, #2, #3...
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            rows.forEach(p => {
+                const hits = Number(p.aciertos) || 0;
+                const miss = Number(p.errores) || 0;
+                const acc = hits + miss > 0 ? ((hits / (hits + miss)) * 100).toFixed(1) + "%" : "—";
+                const lvl = Number(p.nivel_actual) || 1;
+                const pts = Number(p.puntos) || 0;
+                const availLvlPts = p.puntos_nivel_disp !== undefined ? Number(p.puntos_nivel_disp) : 500;
+                const fastBonuses = Number(p.bonus_rapidos) || 0;
+                const pctLvl = Math.round((lvl / 15) * 100);
+                const biomeName = BIOME_NAMES[lvl] || "Mazmorra";
+
+                const relics = [
+                    p.escudo ? "🛡️ Escudo" : "",
+                    p.piedra ? "💎 Carbono" : "",
+                    p.alas ? "🦇 Alas" : "",
+                    p.llave ? "🗝️ Llave" : ""
+                ].filter(Boolean).join(" · ") || "Sin reliquias";
+
+                let statusClass = "playing";
+                if (String(p.estado).includes("Victoria")) statusClass = "victory";
+                else if (String(p.estado).includes("Derrotado")) statusClass = "defeated";
+
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td><strong style="color:#fbbf24; font-size:1rem;">ID #${p.id}</strong></td>
+                    <td><strong style="color:#f8fafc;">${p.nombre}</strong></td>
+                    <td>
+                        <div style="color:#fde047; font-size:1.05rem; font-weight:900;">🏆 ${pts} pts</div>
+                        <div style="font-size:0.72rem; color:#94a3b8;">Acumulados</div>
+                    </td>
+                    <td>
+                        <div style="color:${availLvlPts < 500 ? '#f87171' : '#34d399'}; font-weight:700; font-size:0.82rem;">
+                            🎯 Nivel Disp: ${availLvlPts} / 500 pts
+                        </div>
+                        <div style="color:#38bdf8; font-size:0.76rem; font-weight:600;">
+                            ⚡ Bonus &lt;8s: ${fastBonuses} (+${fastBonuses * 80} pts)
+                        </div>
+                    </td>
+                    <td>
+                        <div style="color:#38bdf8; font-weight:700;">Nivel ${lvl} de 15</div>
+                        <div style="font-size:0.74rem; color:#94a3b8;">${biomeName}</div>
+                        <div class="level-progress-mini"><div class="level-progress-mini-fill" style="width:${pctLvl}%"></div></div>
+                    </td>
+                    <td>❤️ <strong>${p.pv}</strong> / ${p.pv_max || 5} PV</td>
+                    <td>🧪 ${p.pociones ?? 0}</td>
+                    <td style="color:#34d399; font-weight:700;">✔ ${hits}</td>
+                    <td style="color:#f87171; font-weight:700;">✖ ${miss}</td>
+                    <td><strong>${acc}</strong></td>
+                    <td style="font-size:0.78rem;">${relics}</td>
+                    <td><span class="status-pill ${statusClass}">${p.estado}</span></td>
+                    <td style="color:#94a3b8; font-size:0.78rem;">${p.fecha_registro || "—"}</td>
+                    <td style="color:#fde047; font-size:0.8rem; font-weight:600;">${p.ultima_actualizacion || "—"}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById("sync-status-label").textContent =
+                `Sincronización SQL Activa en Tiempo Real · Última lectura: ${new Date().toLocaleTimeString("es-MX")}`;
+        }
+
+        // Eventos de botones SQL
+        document.getElementById("btn-exec-sql").addEventListener("click", () => {
+            renderDashboard(document.getElementById("custom-sql-input").value);
+        });
+        document.getElementById("btn-sql-all").addEventListener("click", () => {
+            const q = "SELECT id, nombre, puntos, puntos_nivel_disp, bonus_rapidos, nivel_actual, pv, pv_max, pociones, aciertos, errores, escudo, piedra, alas, llave, estado, fecha_registro, ultima_actualizacion FROM jugadores ORDER BY id ASC;";
+            document.getElementById("custom-sql-input").value = q;
+            renderDashboard(q);
+        });
+        document.getElementById("btn-sql-ranking").addEventListener("click", () => {
+            const q = "SELECT id, nombre, puntos, puntos_nivel_disp, bonus_rapidos, nivel_actual, pv, pv_max, pociones, aciertos, errores, escudo, piedra, alas, llave, estado, fecha_registro, ultima_actualizacion FROM jugadores ORDER BY puntos DESC, nivel_actual DESC, aciertos DESC;";
+            document.getElementById("custom-sql-input").value = q;
+            renderDashboard(q);
+        });
+        document.getElementById("btn-sql-active").addEventListener("click", () => {
+            const q = "SELECT id, nombre, puntos, puntos_nivel_disp, bonus_rapidos, nivel_actual, pv, pv_max, pociones, aciertos, errores, escudo, piedra, alas, llave, estado, fecha_registro, ultima_actualizacion FROM jugadores WHERE pv > 0 ORDER BY id ASC;";
+            document.getElementById("custom-sql-input").value = q;
+            renderDashboard(q);
+        });
+        document.getElementById("btn-seed-demo").addEventListener("click", () => renderDashboard());
+
+        document.getElementById("btn-export-sql").addEventListener("click", () => {
+            const allPlayers = queryDatabase("SELECT * FROM jugadores ORDER BY id ASC;");
+            let dump = `-- VOLCADO SQL EN TIEMPO REAL - DINÁMICA QUÍMICA & BIOLÓGICA\n`;
+            dump += `CREATE TABLE IF NOT EXISTS jugadores (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, nivel_actual INTEGER, puntos INTEGER, puntos_nivel_disp INTEGER, bonus_rapidos INTEGER, pv INTEGER, pv_max INTEGER, pociones INTEGER, aciertos INTEGER, errores INTEGER, escudo INTEGER, piedra INTEGER, alas INTEGER, llave INTEGER, estado TEXT, fecha_registro TEXT, ultima_actualizacion TEXT);\n\n`;
+            allPlayers.forEach(p => {
+                dump += `INSERT INTO jugadores VALUES (${p.id}, '${String(p.nombre).replace(/'/g, "''")}', ${p.nivel_actual}, ${p.puntos || 0}, ${p.puntos_nivel_disp ?? 500}, ${p.bonus_rapidos || 0}, ${p.pv}, ${p.pv_max || 5}, ${p.pociones}, ${p.aciertos}, ${p.errores}, ${p.escudo}, ${p.piedra}, ${p.alas}, ${p.llave}, '${p.estado}', '${p.fecha_registro}', '${p.ultima_actualizacion}');\n`;
+            });
+            const blob = new Blob([dump], { type: "application/sql;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "jugadores_dinamica_quimica.sql";
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        document.getElementById("btn-back-game").addEventListener("click", () => {
+            window.open("index.html", "_blank");
+        });
+
+        // Escucha en tiempo real desde la ventana del juego
+        if (typeof BroadcastChannel !== "undefined") {
+            const ch = new BroadcastChannel("dinamica_quimica_realtime_sql");
+            ch.onmessage = () => renderDashboard();
+        }
+        window.addEventListener("storage", () => renderDashboard());
+        setInterval(() => renderDashboard(), 1200);
+
+        window.addEventListener("DOMContentLoaded", initSqlEngine);
+    </script>
+</body>
+</html>

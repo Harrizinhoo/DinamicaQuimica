@@ -444,7 +444,7 @@ function getBiologicalConceptSVG(levelNum) {
     switch (levelNum) {
         case 1: // Ilustración gráfica pura: Microorganismo
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <defs>
                     <radialGradient id="bacGrad" cx="50%" cy="50%" r="50%">
                         <stop offset="0%" stop-color="#34d399"/>
@@ -470,7 +470,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 2: // Ilustración gráfica pura: Matraz -> Microorganismo -> Envase
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <!-- Matraz izquierdo -->
                 <rect x="30" y="55" width="60" height="75" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="2.5"/>
                 <path d="M34 85 Q60 80 86 85 L86 126 L34 126 Z" fill="#e2e8f0"/>
@@ -490,7 +490,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 3: // Ilustración gráfica pura: Pez payaso y anémona
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <g stroke="#ec4899" stroke-width="8" stroke-linecap="round" fill="none">
                     <path d="M70 155 Q60 110 75 75"><animate attributeName="d" values="M70 155 Q60 110 75 75; M70 155 Q85 110 65 75; M70 155 Q60 110 75 75" dur="2.2s" repeatCount="indefinite"/></path>
                     <path d="M100 155 Q95 100 105 65"><animate attributeName="d" values="M100 155 Q95 100 105 65; M100 155 Q115 100 95 65; M100 155 Q95 100 105 65" dur="2.5s" repeatCount="indefinite"/></path>
@@ -510,7 +510,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 4: // Ilustración gráfica pura: Liquen sobre roca sin textos explicativos
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <!-- Capa superior filamentosa -->
                 <rect x="35" y="38" width="210" height="24" rx="8" fill="#a16207" stroke="#fde047" stroke-width="1.5"/>
                 <path d="M45 62 L65 82 M95 62 L115 82 M145 62 L165 82 M195 62 L215 82" stroke="#fde047" stroke-width="2"/>
@@ -535,7 +535,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 5: // Ilustración gráfica pura: Río con gotas contaminantes y peces
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <path d="M15 95 Q75 80 140 95 T265 95 L265 160 L15 160 Z" fill="#0284c7" opacity="0.78"/>
                 <circle cx="80" cy="45" r="7" fill="#a855f7">
                     <animate attributeName="cy" values="25;115;25" dur="2.2s" repeatCount="indefinite"/>
@@ -555,7 +555,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 6: // Ilustración gráfica pura: Hierba -> saltamontes -> rana -> serpiente
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <circle cx="35" cy="38" r="16" fill="#facc15">
                     <animate attributeName="r" values="15;18;15" dur="2s" repeatCount="indefinite"/>
                 </circle>
@@ -586,7 +586,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 7: // Ilustración gráfica pura: Doble hélice de ADN sin texto
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <g transform="translate(0, 15)">
                     <g stroke-width="3.5" fill="none">
                         <path d="M40 60 Q90 20 140 60 T240 60" stroke="#38bdf8">
@@ -606,7 +606,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 8: // Ilustración gráfica pura: Dos escamas de dragón (Dorada y Plateada) sin revelar el resultado del cruce
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <g transform="translate(55, 45)">
                     <polygon points="35,0 70,35 35,85 0,35" fill="#fbbf24" stroke="#fef08a" stroke-width="2.5"/>
                     <polygon points="35,12 56,35 35,68 14,35" fill="#f59e0b"/>
@@ -620,7 +620,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 9: // Ilustración gráfica pura: Lago, sol y nubes sin etiquetas de texto
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <circle cx="225" cy="40" r="20" fill="#facc15"/>
                 <ellipse cx="140" cy="148" rx="95" ry="20" fill="#0284c7" stroke="#38bdf8" stroke-width="2"/>
                 <g stroke="#bae6fd" stroke-width="3" fill="none" stroke-linecap="round">
@@ -636,7 +636,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 10: // Ilustración gráfica pura: Árbol con partículas entrando y saliendo (sin texto de Carbono/CO2)
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <rect x="130" y="108" width="20" height="52" fill="#78350f"/>
                 <circle cx="140" cy="82" r="38" fill="#16a34a" stroke="#4ade80" stroke-width="2"/>
                 <circle cx="115" cy="94" r="24" fill="#15803d"/>
@@ -658,7 +658,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 11: // Ilustración gráfica pura: Silueta del encéfalo sin nombres ni textos
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <g transform="translate(0, 10)">
                     <path d="M75 95 C65 50, 125 25, 165 35 C205 42, 215 80, 190 105 L105 105 Z" fill="#475569" stroke="#94a3b8" stroke-width="2"/>
                     <ellipse cx="178" cy="115" rx="28" ry="18" fill="#ec4899" stroke="#fbcfe8" stroke-width="2.5">
@@ -670,7 +670,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 12: // Ilustración gráfica pura: Llama e impulso reflejo sin etiquetas de texto
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <g transform="translate(0, 10)">
                     <path d="M45 130 Q55 95 65 130 Q75 105 80 130 Z" fill="#ef4444">
                         <animate attributeName="transform" type="scale" values="1;1.1;1" dur="0.8s" repeatCount="indefinite"/>
@@ -684,7 +684,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 13: // Ilustración gráfica pura: Silueta alar sin textos
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <g transform="translate(0, 10)">
                     <animateTransform attributeName="transform" type="translate" values="0,14; 0,4; 0,14" dur="1.5s" repeatCount="indefinite"/>
                     <path d="M40 95 Q90 35 235 45 C210 75, 195 95, 210 120 C175 105, 150 115, 155 135 C120 115, 85 120, 40 95 Z" fill="rgba(168, 85, 247, 0.45)" stroke="#d8b4fe" stroke-width="2"/>
@@ -697,7 +697,7 @@ function getBiologicalConceptSVG(levelNum) {
 
         case 14: // Ilustración gráfica pura: Pez en el agua sin texto explicativo
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <path d="M45 95 C65 45, 155 45, 195 65 L195 125 C155 145, 65 145, 45 95 Z" fill="#0369a1" stroke="#38bdf8" stroke-width="2.5"/>
                 <circle cx="80" cy="83" r="6" fill="#fff"/>
                 <circle cx="80" cy="83" r="3" fill="#000"/>
@@ -710,7 +710,7 @@ function getBiologicalConceptSVG(levelNum) {
         case 15: // Ilustración gráfica pura: Bosque vivo vs Bosque talado sin textos explicativos
         default:
             return `
-            <svg viewBox="0 0 280 180">
+            <svg viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
                 <line x1="140" y1="25" x2="140" y2="155" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4,4"/>
                 <!-- Mitad izquierda: Árboles -->
                 <rect x="55" y="100" width="14" height="45" fill="#78350f"/>

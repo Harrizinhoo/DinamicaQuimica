@@ -1103,10 +1103,12 @@ function getEnemySVG(enemyType, levelNum = 1) {
 }
 
 // ============================================================================
-// 5. MOTOR DE BASE DE DATOS SQL (SQLite WebAssembly + Sincronización en Tiempo Real)
+// 5. MOTOR DE BASE DE DATOS SQL (SQLite WebAssembly + Sincronización en Tiempo Real Local y Multi-Dispositivo)
 // ============================================================================
 const DB_STORAGE_KEY = "dinamica_quimica_sqlite_db_v1";
 const DB_FALLBACK_KEY = "dinamica_quimica_records_fallback_v1";
+const CLOUD_SYNC_TOPIC = "dinamica_quimica_sql_harrizinhoo_live_v3";
+const CLOUD_SYNC_URL = `https://ntfy.sh/${CLOUD_SYNC_TOPIC}`;
 const ADMIN_SECRET_PASS = "holamama";
 
 class SQLDatabaseManager {
@@ -1114,12 +1116,28 @@ class SQLDatabaseManager {
         this.db = null;
         this.useSqlJs = false;
         this.fallbackRows = [];
+        this.adminPopupWin = null;
+        this.cloudEventSource = null;
         this.channel = typeof BroadcastChannel !== "undefined"
             ? new BroadcastChannel("dinamica_quimica_realtime_sql")
             : null;
+
+        // Escuchar mensajes postMessage desde/hacia la ventana admin.html
+        window.addEventListener("message", e => {
+            if (!e.data || typeof e.data !== "object") return;
+            if (e.data.type === "ADMIN_REQUEST_SQL_SYNC") {
+                const allRows = this.getAllRowsSorted();
+                if (e.source && typeof e.source.postMessage === "function") {
+                    e.source.postMessage({ type: "SQL_FULL_SYNC", rows: allRows, timestamp: Date.now() }, "*");
+                }
+            } else if (e.data.type === "SQL_FULL_SYNC" && Array.isArray(e.data.rows)) {
+                this.mergeExternalRows(e.data.rows, false);
+            }
+        });
     }
 
     async init() {
+        this.loadFallback();
         try {
             if (typeof window.initSqlJs === "function") {
                 const SQL = await window.initSqlJs({
@@ -1134,20 +1152,24 @@ class SQLDatabaseManager {
                 }
                 this.useSqlJs = true;
                 this.createSchema();
-                this.saveToStorage();
-                return;
+                // Fusionar cualquier fila existente en fallbackRows dentro de SQLite
+                if (this.fallbackRows.length > 0) {
+                    this.upsertRowsIntoSqlite(this.fallbackRows);
+                }
+                this.saveToStorage(false);
             }
         } catch (err) {
             console.warn("Usando motor SQL emulado local (sin conexión CDN):", err);
+            this.useSqlJs = false;
         }
 
-        // Respaldo relacional si no hay internet para descargar el wasm
-        this.useSqlJs = false;
-        this.loadFallback();
+        // Iniciar sincronización en la nube en tiempo real (para celulares y PCs)
+        this.pullCloudHistory();
+        this.startCloudRealtimeStream();
     }
 
     createSchema() {
-        if (!this.useSqlJs) return;
+        if (!this.useSqlJs || !this.db) return;
         this.db.run(`
             CREATE TABLE IF NOT EXISTS jugadores (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1170,43 +1192,149 @@ class SQLDatabaseManager {
                 ultima_actualizacion TEXT NOT NULL
             );
         `);
-        // Migración automática si la tabla ya existía antes en localStorage
         try { this.db.run("ALTER TABLE jugadores ADD COLUMN puntos INTEGER NOT NULL DEFAULT 0;"); } catch (e) {}
         try { this.db.run("ALTER TABLE jugadores ADD COLUMN puntos_nivel_disp INTEGER NOT NULL DEFAULT 500;"); } catch (e) {}
         try { this.db.run("ALTER TABLE jugadores ADD COLUMN bonus_rapidos INTEGER NOT NULL DEFAULT 0;"); } catch (e) {}
     }
 
-    saveToStorage() {
-        if (this.useSqlJs && this.db) {
-            const data = this.db.export();
-            let binaryStr = "";
-            for (let i = 0; i < data.length; i++) {
-                binaryStr += String.fromCharCode(data[i]);
+    upsertRowsIntoSqlite(rows) {
+        if (!this.useSqlJs || !this.db || !Array.isArray(rows)) return;
+        rows.forEach(r => {
+            if (!r || !r.nombre) return;
+            try {
+                // Comprobar si ya existe por nombre para conservar o actualizar su registro más reciente
+                const stmt = this.db.prepare("SELECT id, puntos, nivel_actual, aciertos, errores FROM jugadores WHERE LOWER(nombre) = LOWER(:nombre);");
+                stmt.bind({ ":nombre": String(r.nombre).trim() });
+                let existing = null;
+                if (stmt.step()) {
+                    existing = stmt.getAsObject();
+                }
+                stmt.free();
+
+                const idToUse = existing ? existing.id : (Number(r.id) || null);
+                this.db.run(
+                    `INSERT OR REPLACE INTO jugadores (
+                        id, nombre, nivel_actual, puntos, puntos_nivel_disp, bonus_rapidos,
+                        pv, pv_max, pociones, aciertos, errores, escudo, piedra, alas, llave,
+                        estado, fecha_registro, ultima_actualizacion
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+                    [
+                        idToUse,
+                        String(r.nombre).trim(),
+                        Number(r.nivel_actual) || 1,
+                        Number(r.puntos) || 0,
+                        r.puntos_nivel_disp !== undefined ? Number(r.puntos_nivel_disp) : 500,
+                        Number(r.bonus_rapidos) || 0,
+                        r.pv !== undefined ? Number(r.pv) : 5,
+                        Number(r.pv_max) || 5,
+                        r.pociones !== undefined ? Number(r.pociones) : 1,
+                        Number(r.aciertos) || 0,
+                        Number(r.errores) || 0,
+                        Number(r.escudo) ? 1 : 0,
+                        Number(r.piedra) ? 1 : 0,
+                        Number(r.alas) ? 1 : 0,
+                        Number(r.llave) ? 1 : 0,
+                        String(r.estado || "En progreso"),
+                        String(r.fecha_registro || this.nowFormatted()),
+                        String(r.ultima_actualizacion || this.nowFormatted())
+                    ]
+                );
+            } catch (e) {
+                console.warn("Error al fusionar fila en SQLite:", e);
             }
-            localStorage.setItem(DB_STORAGE_KEY, btoa(binaryStr));
-        } else {
-            localStorage.setItem(DB_FALLBACK_KEY, JSON.stringify(this.fallbackRows));
+        });
+    }
+
+    extractRowsFromSqlite() {
+        if (!this.useSqlJs || !this.db) return [];
+        try {
+            const res = this.db.exec("SELECT * FROM jugadores ORDER BY id ASC;");
+            if (!res || res.length === 0) return [];
+            const cols = res[0].columns;
+            return res[0].values.map(vals => {
+                const obj = {};
+                cols.forEach((c, i) => (obj[c] = vals[i]));
+                return obj;
+            });
+        } catch (e) {
+            return [];
+        }
+    }
+
+    getAllRowsSorted() {
+        if (this.useSqlJs && this.db) {
+            return this.extractRowsFromSqlite();
+        }
+        this.loadFallback();
+        return [...this.fallbackRows].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+    }
+
+    // Guarda SIEMPRE tanto en el binario SQLite como en el JSON relacional de respaldo y notifica en tiempo real
+    saveToStorage(broadcastCloud = true,changedRow = null) {
+        try {
+            if (this.useSqlJs && this.db) {
+                const rows = this.extractRowsFromSqlite();
+                this.fallbackRows = rows;
+                localStorage.setItem(DB_FALLBACK_KEY, JSON.stringify(rows));
+
+                const data = this.db.export();
+                let binaryStr = "";
+                const chunkSize = 8192;
+                for (let i = 0; i < data.length; i += chunkSize) {
+                    binaryStr += String.fromCharCode.apply(null, data.subarray(i, i + chunkSize));
+                }
+                localStorage.setItem(DB_STORAGE_KEY, btoa(binaryStr));
+            } else {
+                localStorage.setItem(DB_FALLBACK_KEY, JSON.stringify(this.fallbackRows));
+            }
+        } catch (e) {
+            console.warn("Aviso al guardar en localStorage:", e);
         }
 
+        const allRows = this.getAllRowsSorted();
+
         if (this.channel) {
-            this.channel.postMessage({ type: "SQL_UPDATED", timestamp: Date.now() });
+            try {
+                this.channel.postMessage({
+                    type: "SQL_UPDATED",
+                    rows: allRows,
+                    changedRow,
+                    timestamp: Date.now()
+                });
+            } catch (e) {}
+        }
+
+        if (this.adminPopupWin && !this.adminPopupWin.closed) {
+            try {
+                this.adminPopupWin.postMessage({
+                    type: "SQL_FULL_SYNC",
+                    rows: allRows,
+                    timestamp: Date.now()
+                }, "*");
+            } catch (e) {}
+        }
+
+        if (broadcastCloud && changedRow) {
+            this.pushRowToCloud(changedRow);
         }
     }
 
     reloadFromStorage() {
+        this.loadFallback();
         if (this.useSqlJs && this.db) {
             const savedBase64 = localStorage.getItem(DB_STORAGE_KEY);
             if (savedBase64) {
-                const binary = Uint8Array.from(atob(savedBase64), c => c.charCodeAt(0));
-                const SQL = this.db.constructor;
-                this.db.close();
-                this.db = new SQL(binary);
-                try { this.db.run("ALTER TABLE jugadores ADD COLUMN puntos INTEGER NOT NULL DEFAULT 0;"); } catch (e) {}
-                try { this.db.run("ALTER TABLE jugadores ADD COLUMN puntos_nivel_disp INTEGER NOT NULL DEFAULT 500;"); } catch (e) {}
-                try { this.db.run("ALTER TABLE jugadores ADD COLUMN bonus_rapidos INTEGER NOT NULL DEFAULT 0;"); } catch (e) {}
+                try {
+                    const binary = Uint8Array.from(atob(savedBase64), c => c.charCodeAt(0));
+                    const SQL = this.db.constructor;
+                    this.db.close();
+                    this.db = new SQL(binary);
+                    this.createSchema();
+                } catch (e) {}
             }
-        } else {
-            this.loadFallback();
+            if (this.fallbackRows.length > 0) {
+                this.upsertRowsIntoSqlite(this.fallbackRows);
+            }
         }
     }
 
@@ -1219,6 +1347,113 @@ class SQLDatabaseManager {
         }
     }
 
+    mergeExternalRows(incomingRows, triggerUI = true) {
+        if (!Array.isArray(incomingRows) || incomingRows.length === 0) return;
+        this.loadFallback();
+
+        incomingRows.forEach(inc => {
+            if (!inc || !inc.nombre) return;
+            const cleanName = String(inc.nombre).trim().toLowerCase();
+            const existingIdx = this.fallbackRows.findIndex(
+                r => String(r.nombre).trim().toLowerCase() === cleanName
+            );
+            if (existingIdx !== -1) {
+                const curr = this.fallbackRows[existingIdx];
+                this.fallbackRows[existingIdx] = {
+                    ...curr,
+                    ...inc,
+                    id: curr.id || inc.id
+                };
+            } else {
+                const usedIds = new Set(this.fallbackRows.map(r => Number(r.id) || 0));
+                let assignedId = Number(inc.id) || 1;
+                if (usedIds.has(assignedId)) {
+                    assignedId = Math.max(0, ...usedIds) + 1;
+                }
+                this.fallbackRows.push({
+                    ...inc,
+                    id: assignedId
+                });
+            }
+        });
+
+        this.fallbackRows.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+
+        if (this.useSqlJs && this.db) {
+            this.upsertRowsIntoSqlite(this.fallbackRows);
+        }
+        this.saveToStorage(false);
+
+        if (triggerUI) {
+            if (typeof renderExistingPlayerPills === "function") {
+                renderExistingPlayerPills();
+            }
+            if (dom && dom.modalAdminDashboard && !dom.modalAdminDashboard.classList.contains("hidden")) {
+                refreshAdminDashboardTable();
+            }
+        }
+    }
+
+    async pushRowToCloud(rowObj) {
+        if (!rowObj || !rowObj.nombre) return;
+        try {
+            await fetch(CLOUD_SYNC_URL, {
+                method: "POST",
+                body: JSON.stringify({
+                    type: "PLAYER_UPSERT",
+                    player: rowObj,
+                    ts: Date.now()
+                })
+            });
+        } catch (e) {
+            // Silencioso si está offline
+        }
+    }
+
+    async pullCloudHistory() {
+        try {
+            const res = await fetch(`${CLOUD_SYNC_URL}/json?poll=1&since=24h`);
+            if (!res.ok) return;
+            const text = await res.text();
+            const lines = text.trim().split("\n");
+            const playersByName = new Map();
+            lines.forEach(line => {
+                if (!line) return;
+                try {
+                    const evt = JSON.parse(line);
+                    if (evt && evt.event === "message" && evt.message) {
+                        const payload = JSON.parse(evt.message);
+                        if (payload && payload.type === "PLAYER_UPSERT" && payload.player && payload.player.nombre) {
+                            playersByName.set(payload.player.nombre.trim().toLowerCase(), payload.player);
+                        }
+                    }
+                } catch (err) {}
+            });
+            if (playersByName.size > 0) {
+                this.mergeExternalRows(Array.from(playersByName.values()), true);
+            }
+        } catch (e) {}
+    }
+
+    startCloudRealtimeStream() {
+        if (typeof EventSource === "undefined") return;
+        try {
+            if (this.cloudEventSource) this.cloudEventSource.close();
+            this.cloudEventSource = new EventSource(`${CLOUD_SYNC_URL}/sse`);
+            this.cloudEventSource.onmessage = evt => {
+                try {
+                    const data = JSON.parse(evt.data);
+                    if (data && data.message) {
+                        const payload = JSON.parse(data.message);
+                        if (payload && payload.type === "PLAYER_UPSERT" && payload.player) {
+                            this.mergeExternalRows([payload.player], true);
+                        }
+                    }
+                } catch (e) {}
+            };
+        } catch (e) {}
+    }
+
     nowFormatted() {
         const d = new Date();
         return d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -1226,15 +1461,17 @@ class SQLDatabaseManager {
 
     // Registra un jugador nuevo (ID empieza en 1 y asciende por orden de registro) o recupera si ya existe
     registerOrGetPlayer(rawName) {
+        this.reloadFromStorage();
         const cleanName = rawName.trim();
         const now = this.nowFormatted();
 
-        if (this.useSqlJs) {
+        if (this.useSqlJs && this.db) {
             const existingStmt = this.db.prepare("SELECT * FROM jugadores WHERE LOWER(nombre) = LOWER(:nombre);");
             existingStmt.bind({ ":nombre": cleanName });
             if (existingStmt.step()) {
                 const row = existingStmt.getAsObject();
                 existingStmt.free();
+                this.saveToStorage(true, row);
                 return row;
             }
             existingStmt.free();
@@ -1245,21 +1482,25 @@ class SQLDatabaseManager {
                  VALUES (?, 1, 0, 500, 0, 5, 5, 1, 0, 0, 0, 0, 0, 0, 'En progreso (Nivel 1)', ?, ?);`,
                 [cleanName, now, now]
             );
-            this.saveToStorage();
 
             const newStmt = this.db.prepare("SELECT * FROM jugadores WHERE LOWER(nombre) = LOWER(:nombre);");
             newStmt.bind({ ":nombre": cleanName });
             newStmt.step();
             const created = newStmt.getAsObject();
             newStmt.free();
+
+            this.saveToStorage(true, created);
             return created;
         } else {
             this.loadFallback();
             let found = this.fallbackRows.find(r => r.nombre.toLowerCase() === cleanName.toLowerCase());
-            if (found) return found;
+            if (found) {
+                this.saveToStorage(true, found);
+                return found;
+            }
 
             const nextId = this.fallbackRows.length > 0
-                ? Math.max(...this.fallbackRows.map(r => r.id)) + 1
+                ? Math.max(...this.fallbackRows.map(r => Number(r.id) || 0)) + 1
                 : 1;
             const newPlayer = {
                 id: nextId,
@@ -1282,18 +1523,19 @@ class SQLDatabaseManager {
                 ultima_actualizacion: now
             };
             this.fallbackRows.push(newPlayer);
-            this.saveToStorage();
+            this.saveToStorage(true, newPlayer);
             return newPlayer;
         }
     }
 
     // Actualiza en tiempo real las estadísticas, tracking de puntos y el nivel del jugador activo en SQL
     updatePlayerProgress(state) {
-        if (!state.playerId) return;
+        if (!state.playerId && !state.playerName) return;
+        this.reloadFromStorage();
         const now = this.nowFormatted();
         const currentLvl = state.currentLevelIndex + 1;
 
-        if (this.useSqlJs) {
+        if (this.useSqlJs && this.db) {
             this.db.run(
                 `UPDATE jugadores
                  SET nivel_actual = ?,
@@ -1311,7 +1553,7 @@ class SQLDatabaseManager {
                      llave = ?,
                      estado = ?,
                      ultima_actualizacion = ?
-                 WHERE id = ?;`,
+                 WHERE id = ? OR LOWER(nombre) = LOWER(?);`,
                 [
                     currentLvl,
                     state.score || 0,
@@ -1328,13 +1570,27 @@ class SQLDatabaseManager {
                     state.hasKey ? 1 : 0,
                     state.statusText,
                     now,
-                    state.playerId
+                    state.playerId,
+                    state.playerName
                 ]
             );
-            this.saveToStorage();
+
+            let updatedRow = null;
+            try {
+                const stmt = this.db.prepare("SELECT * FROM jugadores WHERE id = :id OR LOWER(nombre) = LOWER(:nombre);");
+                stmt.bind({ ":id": state.playerId, ":nombre": state.playerName });
+                if (stmt.step()) {
+                    updatedRow = stmt.getAsObject();
+                }
+                stmt.free();
+            } catch (e) {}
+
+            this.saveToStorage(true, updatedRow);
         } else {
             this.loadFallback();
-            const idx = this.fallbackRows.findIndex(r => r.id === state.playerId);
+            const idx = this.fallbackRows.findIndex(
+                r => r.id === state.playerId || String(r.nombre).toLowerCase() === String(state.playerName).toLowerCase()
+            );
             if (idx !== -1) {
                 this.fallbackRows[idx] = {
                     ...this.fallbackRows[idx],
@@ -1354,7 +1610,7 @@ class SQLDatabaseManager {
                     estado: state.statusText,
                     ultima_actualizacion: now
                 };
-                this.saveToStorage();
+                this.saveToStorage(true, this.fallbackRows[idx]);
             }
         }
     }
@@ -1362,7 +1618,7 @@ class SQLDatabaseManager {
     // Ejecuta una consulta SQL sobre la tabla jugadores
     executeQuery(sqlQuery = "SELECT * FROM jugadores ORDER BY id ASC;") {
         this.reloadFromStorage();
-        if (this.useSqlJs) {
+        if (this.useSqlJs && this.db) {
             const res = this.db.exec(sqlQuery);
             if (!res || res.length === 0) return [];
             const cols = res[0].columns;
@@ -1656,10 +1912,24 @@ function handleAdminLogin() {
         sfx.init();
         sfx.playSwordAndTriumph();
 
+        // Sincronizar almacenamiento antes de abrir la ventana de administración
+        sqlDB.saveToStorage(false);
+
         // Abrir el Panel SQL en una ventana/pestaña nueva dedicada (admin.html)
         const adminWin = window.open("admin.html", "_blank");
-        if (!adminWin) {
-            // Si el navegador bloquea popups, redirigir o abrir el modal de respaldo
+        if (adminWin) {
+            sqlDB.adminPopupWin = adminWin;
+            setTimeout(() => {
+                if (sqlDB.adminPopupWin && !sqlDB.adminPopupWin.closed) {
+                    sqlDB.adminPopupWin.postMessage({
+                        type: "SQL_FULL_SYNC",
+                        rows: sqlDB.getAllRowsSorted(),
+                        timestamp: Date.now()
+                    }, "*");
+                }
+            }, 600);
+        } else {
+            // Si el navegador bloquea popups, redirigir directamente a admin.html
             window.location.href = "admin.html";
         }
     } else {
@@ -1805,13 +2075,18 @@ dom.btnCloseAdmin.addEventListener("click", () => {
 
 // Escuchar actualizaciones en tiempo real de otras pestañas abiertas
 if (sqlDB.channel) {
-    sqlDB.channel.onmessage = () => {
+    sqlDB.channel.onmessage = e => {
+        if (e.data && Array.isArray(e.data.rows)) {
+            sqlDB.mergeExternalRows(e.data.rows, false);
+        }
+        renderExistingPlayerPills();
         if (!dom.modalAdminDashboard.classList.contains("hidden")) {
             refreshAdminDashboardTable();
         }
     };
 }
 window.addEventListener("storage", () => {
+    renderExistingPlayerPills();
     if (!dom.modalAdminDashboard.classList.contains("hidden")) {
         refreshAdminDashboardTable();
     }
@@ -1955,6 +2230,7 @@ function showQuickLevelScorePopup(earnedPoints, basePointsAfterPenalty, bonusPoi
 
 function renderDungeonProgressBar() {
     dom.nodesTrack.innerHTML = "";
+    let activeNodeEl = null;
     DUNGEON_LEVELS.forEach((lvl, idx) => {
         const node = document.createElement("div");
         const isCompleted = idx < gameState.currentLevelIndex;
@@ -1968,6 +2244,7 @@ function renderDungeonProgressBar() {
             <span class="node-label">${isBoss ? "JEFE" : "N" + lvl.level}</span>
         `;
         dom.nodesTrack.appendChild(node);
+        if (isCurrent) activeNodeEl = node;
 
         if (idx < DUNGEON_LEVELS.length - 1) {
             const conn = document.createElement("div");
@@ -1975,6 +2252,15 @@ function renderDungeonProgressBar() {
             dom.nodesTrack.appendChild(conn);
         }
     });
+
+    // En celular, centrar automáticamente el nodo del nivel actual en la barra de progreso
+    if (activeNodeEl && typeof activeNodeEl.scrollIntoView === "function") {
+        setTimeout(() => {
+            try {
+                activeNodeEl.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+            } catch (e) {}
+        }, 60);
+    }
 }
 
 function loadCurrentLevel() {
@@ -2024,6 +2310,9 @@ function loadCurrentLevel() {
     });
 
     dom.feedbackBox.classList.add("hidden");
+    if (gameState.playerId) {
+        sqlDB.updatePlayerProgress(gameState);
+    }
     updateHUD();
     renderDungeonProgressBar();
     startSpeedBonusTimer();

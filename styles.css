@@ -947,6 +947,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .holo-tag {
@@ -965,17 +966,22 @@ body {
 
 .holo-Stage {
     flex: 1;
+    min-height: 0;
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 8px;
+    padding: 6px;
     position: relative;
+    overflow: hidden;
 }
 
 .holo-Stage svg {
+    display: block;
     width: 100%;
     height: 100%;
-    max-height: 200px;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 /* =========================================================
@@ -1995,11 +2001,15 @@ body {
         min-height: 100dvh;
     }
 
-    .game-wrapper {
+    #app-container {
         padding: 6px 8px 14px;
         gap: 6px;
         min-height: 100dvh;
         width: 100%;
+    }
+
+    .game-workspace {
+        gap: 8px;
     }
 
     /* 1. HUD Superior Compacto y Proporcional */
@@ -2016,23 +2026,19 @@ body {
         width: 100%;
     }
 
-    .hero-avatar-badge {
-        width: 38px;
-        height: 38px;
+    .hero-portrait {
+        width: 40px;
+        height: 40px;
         border-radius: 10px;
         flex-shrink: 0;
     }
 
-    .hero-crest-icon {
-        font-size: 1.25rem;
-    }
-
-    .health-block {
+    .health-container {
         min-width: 0;
         flex: 1;
     }
 
-    .health-title-row {
+    .hud-label-row {
         font-size: 0.78rem;
     }
 
@@ -2062,6 +2068,7 @@ body {
         gap: 8px;
     }
 
+    .level-title,
     #level-indicator {
         font-size: 1.05rem;
     }
@@ -2081,40 +2088,34 @@ body {
     }
 
     .hud-right {
-        justify-content: center;
+        justify-content: space-between;
         flex-wrap: wrap;
         gap: 6px;
         width: 100%;
     }
 
-    .potion-btn {
-        padding: 5px 10px;
-        gap: 5px;
-        border-radius: 9px;
+    .inventory-box {
+        flex-direction: row;
+        gap: 6px;
     }
 
-    .potion-icon {
-        font-size: 1rem;
+    .inv-title {
+        display: none;
     }
 
-    .potion-label {
-        font-size: 0.72rem;
-    }
-
-    .potion-count {
-        padding: 1px 6px;
-        font-size: 0.75rem;
-    }
-
-    .inventory-slots {
+    .inv-slots {
         gap: 4px;
     }
 
     .inv-slot {
-        width: 32px;
-        height: 32px;
-        font-size: 0.95rem;
+        width: 34px;
+        height: 34px;
         border-radius: 8px;
+    }
+
+    .slot-icon {
+        width: 22px;
+        height: 22px;
     }
 
     .utility-buttons {
@@ -2140,106 +2141,160 @@ body {
         display: none;
     }
 
-    .dungeon-nodes-track {
-        min-width: 500px;
+    .progress-track {
+        min-width: 520px;
     }
 
     .node-circle {
-        width: 24px;
-        height: 24px;
+        width: 25px;
+        height: 25px;
         font-size: 0.72rem;
+    }
+
+    .dungeon-node.boss-node .node-circle {
+        width: 29px;
+        height: 29px;
+        font-size: 0.85rem;
     }
 
     .node-label {
         font-size: 0.62rem;
     }
 
-    /* 3. Escenario de Batalla 3D: Héroe (Izquierda) + Muestra Holográfica (Arriba Centro) + Contrincante (Derecha) */
+    /* 3. Escenario de Batalla 3D: Visor Biológico Completo Arriba + Héroe y Contrincante Abajo */
     .battle-stage {
-        height: 258px;
-        padding: 8px 10px 12px;
+        height: 315px;
+        padding: 8px 10px 10px;
         border-radius: 14px;
         align-items: flex-end;
         justify-content: space-between;
     }
 
-    .stage-floor {
-        height: 92px;
-    }
-
-    .stage-Buff-Banner {
+    .stage-buffs {
         top: 6px;
         left: 6px;
-        gap: 4px;
-        max-width: 32%;
+        gap: 3px;
+        z-index: 7;
+        flex-direction: column;
+        align-items: flex-start;
     }
 
     .buff-pill {
-        font-size: 0.62rem;
+        font-size: 0.58rem;
         padding: 2px 6px;
     }
 
-    /* Visor Holográfico arriba al centro sin tapar a los combatientes */
+    /* Visor Biológico de Ayuda Completo y Sin Recortes en Celular */
     .concept-holo-card {
         position: absolute;
         top: 6px;
         left: 50%;
         transform: translateX(-50%);
-        width: calc(100% - 24px);
-        max-width: 235px;
-        height: 108px;
-        padding: 5px 8px;
-        border-radius: 11px;
+        width: min(236px, calc(100% - 20px));
+        height: 152px;
+        margin: 0;
+        padding: 0;
+        border-radius: 12px;
         z-index: 6;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
 
     .holo-header {
-        font-size: 0.64rem;
-        margin-bottom: 2px;
-        padding-bottom: 2px;
+        padding: 4px 10px;
+        margin: 0;
+        min-height: 24px;
+        flex-shrink: 0;
     }
 
-    /* Héroe y Contrincante escalados proporcionalmente sobre el terreno */
-    .character-actor {
-        width: 102px;
+    .holo-tag {
+        font-size: 0.62rem;
     }
 
-    .hero-svg-wrapper,
-    .enemy-svg-wrapper {
+    .holo-title {
+        font-size: 0.68rem;
+    }
+
+    .holo-Stage {
+        flex: 1;
+        min-height: 0;
+        width: 100%;
+        height: calc(100% - 24px);
+        padding: 4px 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+
+    .holo-Stage svg {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+    }
+
+    /* Héroe (Izquierda) y Contrincante (Derecha) Proporcionales en el Terreno 3D */
+    .character-container {
+        width: 106px;
+        margin-bottom: 0;
+        z-index: 5;
+    }
+
+    .hero-svg {
         width: 96px;
-        height: 110px;
+        height: 108px;
+    }
+
+    .enemy-svg-wrapper {
+        width: 100px;
+        height: 108px;
+    }
+
+    .enemy-svg-wrapper svg {
+        width: 100%;
+        height: 100%;
     }
 
     .enemy-svg-wrapper.boss-golem-scale {
-        transform: scale(1.12) translateY(-4px);
+        width: 114px;
+        height: 118px;
+        transform: none;
+    }
+
+    .wings-attachment {
+        width: 100px;
+        height: 75px;
+        top: 10px;
+        left: -12px;
     }
 
     .actor-plate {
-        font-size: 0.65rem;
+        font-size: 0.64rem;
         padding: 2px 7px;
-        margin-top: 2px;
-        max-width: 118px;
+        margin-top: -2px;
+        max-width: 115px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
 
-    .floating-dmg {
+    .floating-damage {
         font-size: 0.92rem;
         top: -8px;
     }
 
     /* Ajustar el Rayo Eléctrico y Explosión Smash a las posiciones móviles */
     .combat-fx-layer {
-        top: 30%;
-        height: 120px;
+        top: 42%;
+        height: 135px;
     }
 
-    .hero-smash-fx {
-        width: 150px;
-        height: 150px;
-        left: -18px;
-        top: -12px;
+    .smash-svg {
+        width: 140px;
+        height: 140px;
     }
 
     /* Popup rápido de puntos ganados */
@@ -2279,11 +2334,11 @@ body {
         border-radius: 14px;
     }
 
-    .question-header-bar {
+    .question-badge-row {
         gap: 6px;
     }
 
-    .q-pill {
+    .q-number-pill {
         font-size: 0.74rem;
         padding: 3px 10px;
     }
@@ -2300,14 +2355,17 @@ body {
         padding: 3px 8px;
     }
 
-    .q-action-preview {
-        font-size: 0.74rem;
+    .q-reward-hint {
+        font-size: 0.72rem;
+        padding: 3px 9px;
         width: 100%;
+        text-align: center;
     }
 
-    .narrative-text {
+    .narrative-context {
         font-size: 0.9rem;
-        line-height: 1.32;
+        line-height: 1.35;
+        padding-left: 10px;
     }
 
     .options-grid {
@@ -2443,35 +2501,40 @@ body {
 
 @media (max-width: 420px) {
     .battle-stage {
-        height: 242px;
-        padding: 6px 6px 10px;
+        height: 298px;
+        padding: 6px 6px 8px;
     }
 
     .concept-holo-card {
-        max-width: 210px;
-        height: 98px;
+        width: min(216px, calc(100% - 14px));
+        height: 140px;
     }
 
-    .character-actor {
-        width: 88px;
+    .character-container {
+        width: 92px;
     }
 
-    .hero-svg-wrapper,
+    .hero-svg {
+        width: 84px;
+        height: 95px;
+    }
+
     .enemy-svg-wrapper {
-        width: 82px;
-        height: 96px;
+        width: 88px;
+        height: 95px;
+    }
+
+    .enemy-svg-wrapper.boss-golem-scale {
+        width: 100px;
+        height: 104px;
     }
 
     .actor-plate {
-        font-size: 0.6rem;
-        max-width: 98px;
+        font-size: 0.58rem;
+        max-width: 96px;
     }
 
     .hud-right {
         justify-content: space-between;
-    }
-
-    .potion-label {
-        display: none;
     }
 }

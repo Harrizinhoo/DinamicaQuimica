@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dinámica Química & Biológica: La Mazmorra de la Vida</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Fondo de partículas ambientales -->
+    <canvas id="particle-canvas"></canvas>
+
+    <!-- PANTALLA DE CARGA DEL VIDEOJUEGO Y SELECCIÓN DE PERFIL (JUGADOR / ADMINISTRADOR) -->
+    <div id="loading-auth-screen" class="loading-auth-screen">
+        <div class="loading-auth-card">
+            <div class="welcome-crest">⚔️🧬🛡️</div>
+            <h1 class="game-main-logo">Dinámica Química &amp; Biológica</h1>
+            <h3 class="game-sub-logo">La Mazmorra del Guardián de la Vida · Motor SQL</h3>
+
+            <!-- Barra de Carga estilo Videojuego -->
+            <div id="boot-loader-section" class="boot-loader-section">
+                <div class="loader-status-row">
+                    <span id="loader-status-text">Inicializando Base de Datos SQL y Recursos...</span>
+                    <span id="loader-percent-text">0%</span>
+                </div>
+                <div class="boot-bar-outer">
+                    <div id="boot-bar-fill" class="boot-bar-inner" style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <!-- Selector de Perfil (Se habilita al completar la barra de carga) -->
+            <div id="profile-selector-container" class="profile-selector-container hidden">
+                <div class="profile-tabs">
+                    <button id="tab-btn-player" class="profile-tab active">
+                        🛡️ Perfil de Jugador
+                    </button>
+                    <button id="tab-btn-admin" class="profile-tab">
+                        👑 Perfil de Administrador (SQL)
+                    </button>
+                </div>
+
+                <!-- VISTA 1: REGISTRO / INGRESO DE JUGADOR -->
+                <div id="panel-player-auth" class="auth-panel">
+                    <p class="auth-helper">
+                        Elige el nombre de tu héroe para registrarte en la base de datos SQL (se asignará un <strong>ID ascendente desde el 1</strong>) o continúa tu partida:
+                    </p>
+                    <div class="input-group">
+                        <label for="input-player-name">Nombre del Héroe / Estudiante:</label>
+                        <input type="text" id="input-player-name" class="medieval-input" placeholder="Ej. Sir Alejandro, Lady Sofía..." maxlength="28" autocomplete="off">
+                    </div>
+                    <div id="existing-players-pills" class="existing-players-pills">
+                        <!-- Jugadores registrados previamente para selección rápida -->
+                    </div>
+                    <p id="player-auth-error" class="auth-error hidden"></p>
+                    <button id="btn-login-player" class="btn-epic-start full-width-btn">
+                        ⚔️ Registrar / Entrar a la Mazmorra
+                    </button>
+                </div>
+
+                <!-- VISTA 2: INGRESO DE ADMINISTRADOR -->
+                <div id="panel-admin-auth" class="auth-panel hidden">
+                    <p class="auth-helper">
+                        Acceso exclusivo para el docente / administrador. Consulta en tiempo real el estado del nivel y estadísticas SQL de todos los jugadores registrados.
+                    </p>
+                    <div class="input-group">
+                        <label for="input-admin-pass">Contraseña de Administrador:</label>
+                        <input type="password" id="input-admin-pass" class="medieval-input" placeholder="Ingresa la contraseña..." autocomplete="off">
+                    </div>
+                    <p id="admin-auth-error" class="auth-error hidden">❌ Contraseña incorrecta. Intenta nuevamente.</p>
+                    <button id="btn-login-admin" class="btn-epic-start admin-gold-btn full-width-btn">
+                        🔓 Acceder al Panel SQL en Tiempo Real
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE PANEL DE ADMINISTRADOR SQL EN TIEMPO REAL -->
+    <div id="modal-admin-dashboard" class="modal-backdrop hidden">
+        <div class="modal-card admin-dashboard-card">
+            <div class="modal-header">
+                <div>
+                    <h2>👑 Panel de Control SQL — Estadísticas en Tiempo Real</h2>
+                    <span class="sql-live-badge">🟢 Sincronización SQL Activa (Auto-Refresh &amp; Consultas Directas)</span>
+                </div>
+                <div class="admin-header-actions">
+                    <button id="btn-export-sql" class="util-btn" title="Descargar archivo .sql">💾 Exportar SQL</button>
+                    <button id="btn-close-admin" class="close-btn" title="Volver">✕</button>
+                </div>
+            </div>
+
+            <!-- Tarjetas Resumen KPI -->
+            <div class="admin-kpi-grid">
+                <div class="kpi-box">
+                    <span class="kpi-label">Total Jugadores (ID)</span>
+                    <strong id="kpi-total-players" class="kpi-value">0</strong>
+                </div>
+                <div class="kpi-box">
+                    <span class="kpi-label">Nivel Promedio</span>
+                    <strong id="kpi-avg-level" class="kpi-value">Nivel 1</strong>
+                </div>
+                <div class="kpi-box">
+                    <span class="kpi-label">Precisión Global</span>
+                    <strong id="kpi-global-accuracy" class="kpi-value">0%</strong>
+                </div>
+                <div class="kpi-box">
+                    <span class="kpi-label">Partidas Completadas</span>
+                    <strong id="kpi-completed-games" class="kpi-value">0</strong>
+                </div>
+            </div>
+
+            <!-- Consola de Consulta SQL Ejecutada -->
+            <div class="sql-query-console">
+                <div class="console-header">
+                    <span>🔍 Consulta SQL Activa:</span>
+                    <div class="console-btns">
+                        <button id="btn-run-default-sql" class="mini-sql-btn">SELECT * FROM jugadores ORDER BY id ASC</button>
+                        <button id="btn-run-ranking-sql" class="mini-sql-btn">🏆 SELECT Ranking por Puntos y Nivel</button>
+                    </div>
+                </div>
+                <div class="sql-input-row">
+                    <input type="text" id="custom-sql-input" class="sql-code-input" value="SELECT id, nombre, puntos, puntos_nivel_disp, bonus_rapidos, nivel_actual, pv, pociones, aciertos, errores, estado, ultima_actualizacion FROM jugadores ORDER BY id ASC;" />
+                    <button id="btn-exec-sql" class="btn-exec-sql">▶ Ejecutar SQL</button>
+                </div>
+            </div>
+
+            <!-- Tabla de Resultados de Jugadores en Tiempo Real -->
+            <div class="admin-table-wrapper">
+                <table class="sql-results-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nombre del Jugador</th>
+                            <th>Puntos &amp; Bonus</th>
+                            <th>Nivel Actual</th>
+                            <th>Salud (PV)</th>
+                            <th>Pociones</th>
+                            <th>Aciertos</th>
+                            <th>Errores (-20%)</th>
+                            <th>Precisión</th>
+                            <th>Reliquias</th>
+                            <th>Estado</th>
+                            <th>Última Actividad</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-players-tbody">
+                        <!-- Filas generadas dinámicamente desde la tabla SQL jugadores -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor Principal -->
+    <div id="app-container">
+        
+        <!-- CABECERA / HUD SUPERIOR -->
+        <header class="hud-header">
+            <div class="hud-left">
+                <div class="hero-portrait">
+                    <svg viewBox="0 0 60 60" class="mini-helmet">
+                        <defs>
+                            <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#ffd700" />
+                                <stop offset="100%" stop-color="#b8860b" />
+                            </linearGradient>
+                            <linearGradient id="steelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#e2e8f0" />
+                                <stop offset="100%" stop-color="#64748b" />
+                            </linearGradient>
+                        </defs>
+                        <!-- Pluma roja -->
+                        <path d="M30 5 C45 2, 55 15, 42 22 C35 15, 30 12, 30 5 Z" fill="#ef4444" />
+                        <!-- Casco -->
+                        <path d="M15 22 C15 10, 45 10, 45 22 L47 45 C47 50, 30 55, 30 55 C30 55, 13 50, 13 45 Z" fill="url(#steelGrad)" stroke="url(#goldGrad)" stroke-width="2.5"/>
+                        <!-- Visor -->
+                        <path d="M18 30 L42 30 L40 36 L32 36 L32 48 L28 48 L28 36 L20 36 Z" fill="#0f172a" />
+                        <circle cx="24" cy="33" r="2" fill="#38bdf8" class="glowing-eye"/>
+                        <circle cx="36" cy="33" r="2" fill="#38bdf8" class="glowing-eye"/>
+                    </svg>
+                </div>
+                <div class="health-container">
+                    <div class="hud-label-row">
+                        <span class="hero-name" id="hud-hero-name">ID #1 · Sir BioAlquimista</span>
+                        <span id="hp-text" class="hp-counter">5 / 5 PV</span>
+                    </div>
+                    <div class="hp-bar-outer">
+                        <div id="hp-bar-fill" class="hp-bar-inner" style="width: 100%;"></div>
+                    </div>
+                    <div id="hearts-row" class="hearts-row">
+                        <!-- Corazones dinámicos -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="hud-center">
+                <div class="biome-badge" id="biome-badge">Acto I: El Pantano de los Microorganismos</div>
+                <div class="level-title-row">
+                    <div class="level-title" id="level-indicator">Nivel 1 de 15</div>
+                    <div class="hud-score-badge" title="Puntaje Total Acumulado">
+                        🏆 Puntos: <strong id="hud-total-score">0</strong>
+                    </div>
+                </div>
+                <div class="mission-subtitle" id="mission-text">Misión: Cruzar el pantano sin caer en las trampas bacterianas.</div>
+            </div>
+
+            <div class="hud-right">
+                <div class="inventory-box">
+                    <span class="inv-title">Reliquias &amp; Pociones</span>
+                    <div class="inv-slots">
+                        <button id="btn-potion" class="inv-slot potion-btn" title="Poción de Regeneración Celular (+1 PV)">
+                            <svg viewBox="0 0 40 40" class="slot-icon">
+                                <path d="M16 6 L24 6 L24 12 L32 24 C34 28, 32 34, 26 34 L14 34 C8 34, 6 28, 8 24 L16 12 Z" fill="#ec4899" stroke="#fbcfe8" stroke-width="2"/>
+                                <path d="M14 6 L26 6" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+                                <circle cx="18" cy="26" r="2" fill="#fff" opacity="0.8"/>
+                                <circle cx="23" cy="22" r="1.5" fill="#fff" opacity="0.8"/>
+                            </svg>
+                            <span id="potion-count" class="badge-count">1</span>
+                        </button>
+                        <div id="slot-shield" class="inv-slot locked" title="Escudo Simbiótico (Bloquea 1 daño)">
+                            <svg viewBox="0 0 40 40" class="slot-icon">
+                                <path d="M20 5 L33 10 L33 20 C33 28, 20 35, 20 35 C20 35, 7 28, 7 20 L7 10 Z" fill="#38bdf8" stroke="#bae6fd" stroke-width="2"/>
+                                <path d="M20 10 L20 30 M12 18 L28 18" stroke="#fff" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <div id="slot-stone" class="inv-slot locked" title="Piedra de Energía del Carbono">
+                            <svg viewBox="0 0 40 40" class="slot-icon">
+                                <polygon points="20,4 32,14 28,34 12,34 8,14" fill="#10b981" stroke="#a7f3d0" stroke-width="2"/>
+                                <polygon points="20,8 27,15 24,29 16,29 13,15" fill="#34d399" opacity="0.6"/>
+                            </svg>
+                        </div>
+                        <div id="slot-wings" class="inv-slot locked" title="Alas Quirópteras Mágicas">
+                            <svg viewBox="0 0 40 40" class="slot-icon">
+                                <path d="M5 25 C5 12, 18 8, 20 18 C22 8, 35 12, 35 25 C30 20, 25 22, 20 28 C15 22, 10 20, 5 25 Z" fill="#a855f7" stroke="#e9d5ff" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <div id="slot-key" class="inv-slot locked" title="Llave Abisal del Guardián">
+                            <svg viewBox="0 0 40 40" class="slot-icon">
+                                <circle cx="14" cy="20" r="7" fill="none" stroke="#fbbf24" stroke-width="3"/>
+                                <path d="M21 20 L35 20 L35 26 M29 20 L29 25" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="utility-buttons">
+                    <button id="btn-switch-profile" class="util-btn" title="Cambiar de Jugador o Ir a Perfil Administrador">
+                        👤 <span>Perfiles</span>
+                    </button>
+                    <button id="btn-map" class="util-btn" title="Ver Mapa de la Mazmorra">
+                        🗺️ <span>Mapa</span>
+                    </button>
+                    <button id="btn-audio" class="util-btn" title="Activar/Silenciar Efectos de Sonido">
+                        🔊
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- BARRA DEL MAPA DE 15 NIVELES CONSECUTIVOS -->
+        <section class="dungeon-progress-bar">
+            <div class="progress-track" id="dungeon-nodes-track">
+                <!-- Se generan los 15 nodos por JS -->
+            </div>
+        </section>
+
+        <!-- ÁREA PRINCIPAL DE JUEGO (ESCENARIO + CUADRO DE DIÁLOGO) -->
+        <main class="game-workspace">
+            
+            <!-- ESCENARIO DE COMBATE Y EXPLORACIÓN (ARENA DEL TEMPLO IMPERIAL) -->
+            <section class="battle-stage" id="battle-stage" data-biome="1">
+                <!-- Escenario Panorámico Inspirado en el Templo de Torneo y Terreno de Lucha -->
+                <div class="arena-scenery-layer" aria-hidden="true">
+                    <svg viewBox="0 0 1200 360" preserveAspectRatio="none" class="arena-temple-svg">
+                        <defs>
+                            <!-- Cielo y atmósfera -->
+                            <linearGradient id="arenaSky" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#7dd3fc" class="sky-top"/>
+                                <stop offset="55%" stop-color="#bae6fd" class="sky-mid"/>
+                                <stop offset="100%" stop-color="#fde68a" class="sky-bot"/>
+                            </linearGradient>
+                            <!-- Montañas kársticas lejanas -->
+                            <linearGradient id="mountainFar" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#94a3b8"/>
+                                <stop offset="100%" stop-color="#475569"/>
+                            </linearGradient>
+                            <!-- Montañas cercanas con vegetación -->
+                            <linearGradient id="mountainNear" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#65a30d"/>
+                                <stop offset="35%" stop-color="#78716c"/>
+                                <stop offset="100%" stop-color="#44403c"/>
+                            </linearGradient>
+                            <!-- Techo del Templo Pagoda -->
+                            <linearGradient id="templeRoof" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#475569"/>
+                                <stop offset="50%" stop-color="#334155"/>
+                                <stop offset="100%" stop-color="#1e293b"/>
+                            </linearGradient>
+                            <!-- Estandartes Rojos Imperiales -->
+                            <linearGradient id="crimsonBanner" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#b91c1c"/>
+                                <stop offset="50%" stop-color="#991b1b"/>
+                                <stop offset="100%" stop-color="#450a0a"/>
+                            </linearGradient>
+                            <!-- Muro de Piedra -->
+                            <linearGradient id="stoneWallGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#78716c"/>
+                                <stop offset="50%" stop-color="#57534e"/>
+                                <stop offset="100%" stop-color="#292524"/>
+                            </linearGradient>
+                        </defs>
+
+                        <!-- 1. CIELO DE FONDO -->
+                        <rect x="0" y="0" width="1200" height="260" fill="url(#arenaSky)" opacity="0.88"/>
+
+                        <!-- 2. PICOS Y MONTAÑAS ROCOSAS (Izquierda y Derecha como en la imagen) -->
+                        <!-- Picos Lejanos -->
+                        <path d="M-20 220 L30 75 L85 75 L125 220 Z" fill="url(#mountainFar)" opacity="0.75"/>
+                        <path d="M110 220 L145 105 L195 105 L230 220 Z" fill="url(#mountainFar)" opacity="0.8"/>
+                        <path d="M880 220 L920 120 L975 120 L1015 220 Z" fill="url(#mountainFar)" opacity="0.75"/>
+                        <!-- Picos Cercanos con musgo/vegetación en la cima -->
+                        <path d="M180 220 L225 45 C255 35, 290 35, 320 50 L365 220 Z" fill="url(#mountainNear)"/>
+                        <path d="M620 220 L650 110 C675 102, 700 105, 720 118 L750 220 Z" fill="url(#mountainNear)" opacity="0.85"/>
+                        <path d="M1010 220 L1065 82 C1110 68, 1165 72, 1195 95 L1220 220 Z" fill="url(#mountainNear)"/>
+
+                        <!-- 3. GRAN TEMPLO / PAGODA IMPERIAL CENTRAL -->
+                        <!-- Columnas del Templo -->
+                        <rect x="330" y="88" width="28" height="105" fill="#292524" stroke="#44403c" stroke-width="2"/>
+                        <rect x="842" y="88" width="28" height="105" fill="#292524" stroke="#44403c" stroke-width="2"/>
+                        <rect x="460" y="95" width="22" height="98" fill="#1c1917"/>
+                        <rect x="718" y="95" width="22" height="98" fill="#1c1917"/>
+
+                        <!-- Techo Curvo Tradicional con Aleros Levantados -->
+                        <path d="M195 72 Q235 65 275 38 L315 58 L885 58 L925 38 Q965 65 1005 72 L975 94 L225 94 Z" fill="url(#templeRoof)" stroke="#fbbf24" stroke-width="2"/>
+                        <!-- Arco Central del Techo -->
+                        <path d="M465 60 Q600 5 735 60 Z" fill="#1e293b" stroke="#fbbf24" stroke-width="2.5"/>
+                        <path d="M490 60 Q600 22 710 60" fill="none" stroke="#d97706" stroke-width="3"/>
+
+                        <!-- Trono Central y Gran Maestro Guardián al fondo -->
+                        <g transform="translate(555, 92)">
+                            <!-- Respaldo del Trono -->
+                            <path d="M10 75 L10 20 Q45 -10 80 20 L80 75 Z" fill="#292524" stroke="#fbbf24" stroke-width="2"/>
+                            <!-- Rosetón Místico detrás del trono -->
+                            <circle cx="45" cy="72" r="34" fill="#0f172a" stroke="#fbbf24" stroke-width="2.5"/>
+                            <circle cx="45" cy="72" r="24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-dasharray="6,4"/>
+                            <!-- Silueta del Maestro sentado en el Trono -->
+                            <circle cx="45" cy="28" r="9" fill="#fde68a"/>
+                            <path d="M26 68 C26 42, 64 42, 64 68 Z" fill="#78350f" stroke="#fbbf24" stroke-width="1.5"/>
+                        </g>
+
+                        <!-- 4. DOS ESTANDARTES ROJOS COLGANTES CON MEDALLÓN (Exactos a la referencia) -->
+                        <!-- Estandarte Izquierdo -->
+                        <g transform="translate(392, 18)">
+                            <line x1="-10" y1="4" x2="66" y2="4" stroke="#451a03" stroke-width="5" stroke-linecap="round"/>
+                            <path d="M0 4 L56 4 L56 125 L28 148 L0 125 Z" fill="url(#crimsonBanner)" stroke="#fbbf24" stroke-width="2"/>
+                            <circle cx="28" cy="65" r="19" fill="#1e293b" stroke="#fbbf24" stroke-width="2.5"/>
+                            <circle cx="28" cy="65" r="12" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,2"/>
+                        </g>
+                        <!-- Estandarte Derecho -->
+                        <g transform="translate(752, 18)">
+                            <line x1="-10" y1="4" x2="66" y2="4" stroke="#451a03" stroke-width="5" stroke-linecap="round"/>
+                            <path d="M0 4 L56 4 L56 125 L28 148 L0 125 Z" fill="url(#crimsonBanner)" stroke="#fbbf24" stroke-width="2"/>
+                            <circle cx="28" cy="65" r="19" fill="#1e293b" stroke="#fbbf24" stroke-width="2.5"/>
+                            <circle cx="28" cy="65" r="12" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,2"/>
+                        </g>
+
+                        <!-- 5. MONJES / DISCÍPULOS ESPECTADORES CON TÚNICA BLANCA Y DORADA -->
+                        <!-- Fila Superior de Monjes -->
+                        <g class="monk-spectators-back" opacity="0.88">
+                            <g transform="translate(55, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(135, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(275, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(360, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(445, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(525, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(640, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(725, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(810, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(895, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(1035, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                            <g transform="translate(1115, 138)"><circle cx="20" cy="10" r="8" fill="#d97706"/><path d="M2 42 C2 22, 38 22, 38 42 Z" fill="#f8fafc"/><path d="M8 24 L20 40 L32 24" fill="none" stroke="#d97706" stroke-width="5"/></g>
+                        </g>
+
+                        <!-- Fila Frontal de Monjes detrás de la Balaustrada -->
+                        <g class="monk-spectators-front">
+                            <g transform="translate(18, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                            <g transform="translate(95, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                            <g transform="translate(315, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                            <g transform="translate(400, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                            <g transform="translate(485, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                            <g transform="translate(675, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                            <g transform="translate(760, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                            <g transform="translate(845, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                            <g transform="translate(1065, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                            <g transform="translate(1140, 154)"><circle cx="22" cy="11" r="9" fill="#f59e0b"/><path d="M0 46 C0 24, 44 24, 44 46 Z" fill="#ffffff"/><path d="M8 26 L22 44 L36 26" fill="none" stroke="#d97706" stroke-width="6"/></g>
+                        </g>
+
+                        <!-- 6. BALAUSTRADA Y MURO DE PIEDRA DEL PATIO -->
+                        <rect x="0" y="196" width="1200" height="54" fill="url(#stoneWallGrad)" stroke="#1c1917" stroke-width="2"/>
+                        <rect x="0" y="192" width="1200" height="8" fill="#a8a29e"/>
+                        <!-- Pilares de piedra a lo largo del muro -->
+                        <rect x="65" y="186" width="28" height="64" fill="#57534e" stroke="#292524" stroke-width="1.5"/>
+                        <rect x="390" y="186" width="28" height="64" fill="#57534e" stroke="#292524" stroke-width="1.5"/>
+                        <rect x="782" y="186" width="28" height="64" fill="#57534e" stroke="#292524" stroke-width="1.5"/>
+                        <rect x="1105" y="186" width="28" height="64" fill="#57534e" stroke="#292524" stroke-width="1.5"/>
+
+                        <!-- 7. GUARDIAS IMPERIALES ARRODILLADOS JUNTO AL MURO -->
+                        <!-- Guardia Izquierdo -->
+                        <g transform="translate(215, 158)" opacity="0.95">
+                            <!-- Lanza -->
+                            <line x1="58" y1="-18" x2="42" y2="85" stroke="#fde047" stroke-width="3"/>
+                            <polygon points="58,-28 53,-14 63,-14" fill="#fef08a"/>
+                            <!-- Casco y Túnica Dorada -->
+                            <polygon points="15,18 38,8 45,25 12,26" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
+                            <path d="M12 26 L42 26 L48 68 L8 68 Z" fill="#d97706" stroke="#78350f" stroke-width="1.5"/>
+                            <path d="M6 68 L24 92 L52 92 L44 68 Z" fill="#b45309"/>
+                        </g>
+                        <!-- Guardia Derecho -->
+                        <g transform="translate(925, 158)" opacity="0.95">
+                            <!-- Lanza -->
+                            <line x1="2" y1="-18" x2="18" y2="85" stroke="#fde047" stroke-width="3"/>
+                            <polygon points="2,-28 -3,-14 7,-14" fill="#fef08a"/>
+                            <!-- Casco y Túnica Dorada -->
+                            <polygon points="45,18 22,8 15,25 48,26" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
+                            <path d="M18 26 L48 26 L52 68 L12 68 Z" fill="#d97706" stroke="#78350f" stroke-width="1.5"/>
+                            <path d="M16 68 L8 92 L36 92 L54 68 Z" fill="#b45309"/>
+                        </g>
+                    </svg>
+
+                    <!-- 8. TERRENO DE LUCHA EN PERSPECTIVA 3D (Tablones de Madera + Losa Central con Medallón Tallado) -->
+                    <div class="arena-floor-3d">
+                        <div class="floor-wood-wing left-wing"></div>
+                        <div class="floor-stone-center">
+                            <div class="carved-medallion">
+                                <div class="medallion-inner-symbol"></div>
+                            </div>
+                        </div>
+                        <div class="floor-wood-wing right-wing"></div>
+                    </div>
+                </div>
+                
+                <!-- Flotante de Estado / Escudo Activo -->
+                <div id="active-buffs" class="active-buffs"></div>
+
+                <!-- HÉROE ÉPICO MEDIEVAL (Izquierda) -->
+                <div class="character-container hero-side" id="hero-actor">
+                    <div class="floating-damage" id="hero-dmg-text"></div>
+                    <div class="shield-aura hidden" id="hero-shield-aura"></div>
+                    <div class="wings-attachment hidden" id="hero-wings-back">
+                        <svg viewBox="0 0 160 120">
+                            <path d="M80 60 C40 10, 5 20, 10 80 C25 65, 45 75, 60 95 C70 75, 75 70, 80 60 Z" fill="rgba(168, 85, 247, 0.85)" stroke="#e9d5ff" stroke-width="2"/>
+                        </svg>
+                    </div>
+                    <svg viewBox="0 0 220 240" class="hero-svg">
+                        <defs>
+                            <linearGradient id="armorMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#f8fafc"/>
+                                <stop offset="50%" stop-color="#94a3b8"/>
+                                <stop offset="100%" stop-color="#334155"/>
+                            </linearGradient>
+                            <linearGradient id="royalGold" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#fef08a"/>
+                                <stop offset="50%" stop-color="#eab308"/>
+                                <stop offset="100%" stop-color="#854d0e"/>
+                            </linearGradient>
+                            <linearGradient id="crimsonCape" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#dc2626"/>
+                                <stop offset="100%" stop-color="#7f1d1d"/>
+                            </linearGradient>
+                            <linearGradient id="magicBlade" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#38bdf8"/>
+                                <stop offset="50%" stop-color="#e0f2fe"/>
+                                <stop offset="100%" stop-color="#0284c7"/>
+                            </linearGradient>
+                            <filter id="glowFx">
+                                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <!-- Sombra en el piso -->
+                        <ellipse cx="95" cy="222" rx="48" ry="10" fill="rgba(0,0,0,0.55)"/>
+
+                        <!-- Capa Real -->
+                        <path class="hero-cape" d="M65 85 C35 120, 20 185, 35 215 C55 215, 80 205, 95 190 Z" fill="url(#crimsonCape)" stroke="#450a0a" stroke-width="2"/>
+
+                        <!-- Piernas / Grebas -->
+                        <rect x="72" y="165" width="16" height="48" rx="6" fill="url(#armorMetal)" stroke="#1e293b" stroke-width="2"/>
+                        <rect x="102" y="165" width="16" height="48" rx="6" fill="url(#armorMetal)" stroke="#1e293b" stroke-width="2"/>
+                        <!-- Botas doradas -->
+                        <path d="M68 205 L92 205 L96 220 L68 220 Z" fill="url(#royalGold)" stroke="#422006" stroke-width="1.5"/>
+                        <path d="M98 205 L122 205 L126 220 L98 220 Z" fill="url(#royalGold)" stroke="#422006" stroke-width="1.5"/>
+
+                        <!-- Torso / Coraza Medieval -->
+                        <path d="M65 88 L125 88 L118 168 L72 168 Z" fill="url(#armorMetal)" stroke="#1e293b" stroke-width="2.5"/>
+                        <!-- Emblema del Átomo / ADN en el pecho -->
+                        <circle cx="95" cy="122" r="14" fill="#0f172a" stroke="url(#royalGold)" stroke-width="2.5"/>
+                        <ellipse cx="95" cy="122" rx="10" ry="4" fill="none" stroke="#38bdf8" stroke-width="1.5" transform="rotate(30 95 122)"/>
+                        <ellipse cx="95" cy="122" rx="10" ry="4" fill="none" stroke="#38bdf8" stroke-width="1.5" transform="rotate(-30 95 122)"/>
+                        <circle cx="95" cy="122" r="2.5" fill="#fbbf24"/>
+
+                        <!-- Cinturón Real -->
+                        <rect x="70" y="158" width="50" height="10" fill="#451a03" stroke="url(#royalGold)" stroke-width="2"/>
+                        <rect x="89" y="156" width="12" height="14" fill="url(#royalGold)"/>
+
+                        <!-- Hombreras -->
+                        <path d="M52 82 C52 68, 75 68, 78 88 L55 96 Z" fill="url(#royalGold)" stroke="#422006" stroke-width="2"/>
+                        <path d="M112 88 C115 68, 138 68, 138 82 L135 96 Z" fill="url(#royalGold)" stroke="#422006" stroke-width="2"/>
+
+                        <!-- CASCOS Y CABEZA -->
+                        <g class="hero-head">
+                            <!-- Penacho rojo épico -->
+                            <path d="M88 18 C65 5, 40 20, 58 42 C72 32, 82 28, 95 25 Z" fill="#ef4444" stroke="#991b1b" stroke-width="1.5"/>
+                            <!-- Casco de Caballero -->
+                            <path d="M68 45 C68 20, 122 20, 122 45 L125 82 C125 88, 95 94, 95 94 C95 94, 65 88, 65 82 Z" fill="url(#armorMetal)" stroke="#1e293b" stroke-width="2.5"/>
+                            <!-- Corona/Borde Dorado del Casco -->
+                            <path d="M67 42 L80 34 L95 42 L110 34 L123 42" fill="none" stroke="url(#royalGold)" stroke-width="3.5" stroke-linejoin="round"/>
+                            <!-- Visera Oscura y Ojos Mágicos -->
+                            <path d="M74 55 L116 55 L113 65 L98 65 L98 85 L92 85 L92 65 L77 65 Z" fill="#090d16"/>
+                            <circle cx="84" cy="59" r="3" fill="#38bdf8" filter="url(#glowFx)"/>
+                            <circle cx="106" cy="59" r="3" fill="#38bdf8" filter="url(#glowFx)"/>
+                        </g>
+
+                        <!-- BRAZO DE LA ESPADA (Animable al atacar) -->
+                        <g class="hero-sword-arm" id="hero-sword-arm">
+                            <!-- Brazo -->
+                            <rect x="118" y="92" width="16" height="42" rx="7" fill="url(#armorMetal)" stroke="#1e293b" stroke-width="2" transform="rotate(-25 126 98)"/>
+                            <!-- Guantelete -->
+                            <circle cx="140" cy="122" r="9" fill="url(#royalGold)" stroke="#422006" stroke-width="2"/>
+                            <!-- ESPADA RUNA BIO-QUÍMICA -->
+                            <g class="sword-weapon" transform="translate(140, 122) rotate(-35)">
+                                <!-- Pomo y Empuñadura -->
+                                <rect x="-4" y="0" width="8" height="22" fill="#451a03" stroke="#eab308" stroke-width="1.5"/>
+                                <circle cx="0" cy="25" r="6" fill="url(#royalGold)"/>
+                                <!-- Guarda Cruzada Dorada -->
+                                <path d="M-22 -2 L22 -2 L18 5 L-18 5 Z" fill="url(#royalGold)" stroke="#422006" stroke-width="1.5"/>
+                                <!-- Hoja de Cristal/Acero -->
+                                <polygon points="-7,-2 7,-2 5,-105 0,-122 -5,-105" fill="url(#magicBlade)" stroke="#bae6fd" stroke-width="1.5" filter="url(#glowFx)"/>
+                                <line x1="0" y1="-5" x2="0" y2="-110" stroke="#ffffff" stroke-width="2"/>
+                            </g>
+                        </g>
+
+                        <!-- ESCUDO HERÁLDICO (Mano Izquierda) -->
+                        <g class="hero-shield-arm">
+                            <path d="M48 96 L88 102 L85 138 C85 156, 66 170, 66 170 C66 170, 46 156, 46 138 Z" fill="#1e3a8a" stroke="url(#royalGold)" stroke-width="3.5"/>
+                            <path d="M66 105 L66 160 M52 128 L80 128" stroke="url(#royalGold)" stroke-width="3"/>
+                            <circle cx="66" cy="128" r="6" fill="#38bdf8"/>
+                        </g>
+                    </svg>
+
+                    <!-- EFECTO DE IMPACTO TIPO SMASH EN LA ARMADURA DEL HÉROE (Al fallar respuesta) -->
+                    <div id="hero-smash-fx" class="hero-smash-fx hidden" aria-hidden="true">
+                        <svg viewBox="0 0 240 240" class="smash-svg">
+                            <!-- Onda expansiva supersónica -->
+                            <circle cx="110" cy="120" r="18" fill="none" stroke="#fef08a" stroke-width="8" class="smash-shockwave"/>
+                            <circle cx="110" cy="120" r="32" fill="none" stroke="#ef4444" stroke-width="5" stroke-dasharray="14,8" class="smash-shockwave-outer"/>
+                            <!-- Destello estelar tipo Smash Bros en la coraza -->
+                            <polygon class="smash-starburst" points="110,20 128,85 195,60 145,112 210,145 138,142 155,208 110,155 65,208 82,142 10,145 75,112 25,60 92,85" fill="#ef4444" stroke="#fef08a" stroke-width="4"/>
+                            <polygon class="smash-core" points="110,52 122,96 168,80 134,115 175,135 128,132 138,175 110,140 82,175 92,132 45,135 86,115 52,80 98,96" fill="#ffffff"/>
+                            <!-- Grietas y esquirlas metálicas de la armadura -->
+                            <g class="armor-shards" fill="#cbd5e1" stroke="#0f172a" stroke-width="1.5">
+                                <polygon points="55,65 40,52 48,74" class="shard s1"/>
+                                <polygon points="165,62 182,50 174,72" class="shard s2"/>
+                                <polygon points="45,155 28,168 48,174" class="shard s3"/>
+                                <polygon points="170,155 188,165 168,175" class="shard s4"/>
+                            </g>
+                        </svg>
+                    </div>
+
+                    <div class="actor-plate" id="stage-hero-plate">Sir BioAlquimista</div>
+                </div>
+
+                <!-- CAPA DE RAYO ELÉCTRICO BIO-ARCANO HACIA EL CONTRINCANTE BIOLÓGICO -->
+                <div id="combat-fx-layer" class="combat-fx-layer hidden" aria-hidden="true">
+                    <svg viewBox="0 0 1000 320" preserveAspectRatio="none" class="lightning-stage-svg">
+                        <defs>
+                            <filter id="electricGlow" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="6" result="blur1"/>
+                                <feGaussianBlur stdDeviation="14" result="blur2"/>
+                                <feMerge>
+                                    <feMergeNode in="blur2"/>
+                                    <feMergeNode in="blur1"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                            <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#38bdf8"/>
+                                <stop offset="50%" stop-color="#fef08a"/>
+                                <stop offset="100%" stop-color="#00f5d4"/>
+                            </linearGradient>
+                        </defs>
+
+                        <!-- Esfera de carga eléctrica en la punta de la espada del héroe -->
+                        <circle cx="195" cy="155" r="26" fill="#38bdf8" filter="url(#electricGlow)" class="lightning-origin-orb"/>
+                        <circle cx="195" cy="155" r="14" fill="#ffffff" class="lightning-origin-core"/>
+
+                        <!-- Haz eléctrico exterior (Aura Cian/Dorada) -->
+                        <polyline class="bolt-outer" filter="url(#electricGlow)"
+                            points="195,155 275,118 330,172 425,110 495,168 585,112 660,165 745,120 825,155"
+                            fill="none" stroke="url(#boltGrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+
+                        <!-- Arco eléctrico secundario ramificado -->
+                        <polyline class="bolt-branch" filter="url(#electricGlow)"
+                            points="275,118 345,78 410,125 495,95 560,145 645,88 730,138 825,155"
+                            fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+
+                        <polyline class="bolt-branch-low" filter="url(#electricGlow)"
+                            points="330,172 405,212 485,168 575,205 660,165 755,192 825,155"
+                            fill="none" stroke="#fde047" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+
+                        <!-- Núcleo blanco incandescente de alto voltaje -->
+                        <polyline class="bolt-core"
+                            points="195,155 275,118 330,172 425,110 495,168 585,112 660,165 745,120 825,155"
+                            fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+                        <!-- Explosión de electrocución sobre el objeto biológico contrincante -->
+                        <g class="enemy-shock-burst" transform="translate(825, 155)">
+                            <circle cx="0" cy="0" r="58" fill="rgba(56, 189, 248, 0.35)" filter="url(#electricGlow)" class="shock-ring"/>
+                            <polygon points="0,-68 16,-20 65,-38 28,4 68,42 15,26 0,72 -15,26 -68,42 -28,4 -65,-38 -16,-20"
+                                fill="#fef08a" stroke="#38bdf8" stroke-width="3" filter="url(#electricGlow)" class="shock-sparks"/>
+                            <circle cx="0" cy="0" r="24" fill="#ffffff"/>
+                        </g>
+                    </svg>
+                </div>
+
+                <!-- CÁPSULA CENTRAL DE ANIMACIÓN DE CONCEPTO BIOLÓGICO -->
+                <div class="concept-holo-card" id="concept-holo-card">
+                    <div class="holo-header">
+                        <span class="holo-tag">🔬 Visor Biológico</span>
+                        <span id="concept-title" class="holo-title">Fermentación Bacteriana</span>
+                    </div>
+                    <div class="holo-Stage" id="concept-svg-container">
+                        <!-- Animación SVG específica de cada una de las 15 preguntas -->
+                    </div>
+                </div>
+
+                <!-- ENEMIGO / GUARDIÁN / GOLEM GIGANTE (Derecha) -->
+                <div class="character-container enemy-side" id="enemy-actor">
+                    <div class="floating-damage" id="enemy-dmg-text"></div>
+                    <div id="enemy-svg-wrapper" class="enemy-svg-wrapper">
+                        <!-- Inyectado dinámicamente según el nivel (Criatura o Golem Gigante en Nivel 15) -->
+                    </div>
+                    <div class="actor-plate enemy-plate" id="enemy-name-plate">Guardián Bacteriano</div>
+                </div>
+
+                <!-- PANEL RÁPIDO EMERGENTE DE PUNTOS GANADOS AL VENCER UN NIVEL -->
+                <div id="level-score-popup" class="level-score-popup hidden" aria-live="polite">
+                    <div class="score-popup-card">
+                        <div class="score-popup-header">✨ ¡NIVEL VENCIDO! ✨</div>
+                        <div class="score-popup-main" id="popup-points-earned">+580 PTS</div>
+                        <div class="score-popup-breakdown" id="popup-points-breakdown">
+                            Base Nivel: 500 pts · Bonus Velocidad (&lt;8s): +80 pts
+                        </div>
+                        <div class="score-popup-total" id="popup-running-total">Total Acumulado: 580 pts</div>
+                    </div>
+                </div>
+
+                <!-- PUERTA ANIMADA DE LA MAZMORRA (Transición entre los 15 niveles) -->
+                <div class="dungeon-gate-overlay hidden" id="dungeon-gate">
+                    <div class="gate-archway">
+                        <div class="gate-stone-frame">
+                            <div class="gate-runes" id="gate-Floating-text">¡PUERTA DESBLOQUEADA!</div>
+                            <div class="gate-doors-wrapper" id="gate-doors">
+                                <div class="gate-leaf gate-left">
+                                    <div class="gate-iron-bars"></div>
+                                    <div class="gate-ring"></div>
+                                </div>
+                                <div class="gate-leaf gate-right">
+                                    <div class="gate-iron-bars"></div>
+                                    <div class="gate-ring"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- PANEL INFERIOR: HISTORIA, PREGUNTA Y OPCIONES -->
+            <section class="dialogue-and-quiz">
+                <div class="dialogue-card">
+                    <div class="question-badge-row">
+                        <span class="q-number-pill" id="q-number-pill">Pregunta 1 — Ataque microbiano</span>
+                        <div class="level-scoring-pills">
+                            <span class="q-points-pill" id="level-available-pts" title="Puntos disponibles en este nivel (-20% por cada fallo)">
+                                🎯 Puntos Nivel: <strong>500</strong> pts
+                            </span>
+                            <span class="q-timer-pill bonus-active" id="speed-bonus-timer" title="Responde en los primeros 8 segundos para ganar +80 puntos extra">
+                                ⏱️ Bonus +80 pts: <strong>8.0s</strong>
+                            </span>
+                        </div>
+                        <span class="q-reward-hint" id="q-action-preview">⚡ Acción: Poder de la fermentación</span>
+                    </div>
+
+                    <p class="narrative-context" id="q-narrative">
+                        El héroe encuentra una puerta cubierta de bacterias. Una voz le pregunta: ¿cuál de estas afirmaciones sobre las bacterias es correcta?
+                    </p>
+
+                    <div class="options-grid" id="options-container">
+                        <!-- Botones A, B, C generados por JS -->
+                    </div>
+
+                    <!-- Cuadro de Retroalimentación Científica y Botón de Avance -->
+                    <div id="feedback-box" class="feedback-box hidden">
+                        <div class="feedback-content">
+                            <div id="feedback-icon" class="feedback-icon">✅</div>
+                            <div class="feedback-text-block">
+                                <h4 id="feedback-title">¡Golpe Crítico Científico!</h4>
+                                <p id="feedback-explanation"></p>
+                                <p id="feedback-action-result" class="action-highlight"></p>
+                            </div>
+                        </div>
+                        <button id="btn-next-level" class="btn-epic-next">
+                            Cruzar Puerta al Siguiente Nivel ➔
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- MODAL DE MAPA COMPLETO DE LA MAZMORRA (15 NIVELES) -->
+    <div id="modal-map" class="modal-backdrop hidden">
+        <div class="modal-card map-modal-card">
+            <div class="modal-header">
+                <h2>🗺️ Mapa de la Mazmorra de la Vida (15 Niveles)</h2>
+                <button id="btn-close-map" class="close-btn">✕</button>
+            </div>
+            <p class="map-subtitle">Supera cada sala consecutiva para llegar al Guardián de la Vida (Golem Ancestral).</p>
+            <div id="full-map-grid" class="full-map-grid">
+                <!-- Nodos detallados -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE VICTORIA / DERROTA -->
+    <div id="modal-overlay" class="modal-backdrop hidden">
+        <div class="modal-card hero-welcome-card" id="modal-inner-card">
+            <div class="welcome-crest">⚔️🧬🛡️</div>
+            <h1 id="modal-main-title">Dinámica Química &amp; Biológica</h1>
+            <h3 id="modal-sub-title">La Mazmorra del Guardián de la Vida</h3>
+            <p id="modal-description"></p>
+            <button id="btn-start-game" class="btn-epic-start">
+                ⚔️ Reintentar la Mazmorra
+            </button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

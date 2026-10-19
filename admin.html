@@ -91,6 +91,48 @@
             height: 100%;
             background: linear-gradient(90deg, #38bdf8, #fbbf24);
         }
+        @media (max-width: 1024px) {
+            body {
+                padding: 14px 12px;
+            }
+            .admin-kpi-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+            .admin-top-bar {
+                padding: 14px 16px;
+            }
+            .admin-title-group h1 {
+                font-size: 1.2rem;
+            }
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px 8px;
+            }
+            .admin-kpi-grid {
+                grid-template-columns: 1fr !important;
+                gap: 8px;
+            }
+            .admin-header-actions {
+                width: 100%;
+                flex-wrap: wrap;
+                justify-content: stretch;
+            }
+            .admin-header-actions button {
+                flex: 1 1 auto;
+                text-align: center;
+                justify-content: center;
+            }
+            .sql-input-row {
+                flex-direction: column;
+            }
+            .console-btns {
+                flex-wrap: wrap;
+            }
+            .mini-sql-btn {
+                flex: 1 1 auto;
+            }
+        }
     </style>
 </head>
 <body>
@@ -183,6 +225,8 @@
     <script>
         const DB_STORAGE_KEY = "dinamica_quimica_sqlite_db_v1";
         const DB_FALLBACK_KEY = "dinamica_quimica_records_fallback_v1";
+        const CLOUD_SYNC_TOPIC = "dinamica_quimica_sql_harrizinhoo_live_v3";
+        const CLOUD_SYNC_URL = `https://ntfy.sh/${CLOUD_SYNC_TOPIC}`;
 
         const BIOME_NAMES = {
             1: "Pantano Microbiano",
@@ -203,6 +247,132 @@
         };
 
         let SQL_ENGINE = null;
+        let livePlayersMap = new Map(); // clave: nombre en minúsculas -> objeto jugador
+
+        function mergePlayersIntoMap(rowsArray, persistLocal = true) {
+            if (!Array.isArray(rowsArray) || rowsArray.length === 0) return false;
+            let changed = false;
+
+            rowsArray.forEach(inc => {
+                if (!inc || !inc.nombre) return;
+                const key = String(inc.nombre).trim().toLowerCase();
+                const existing = livePlayersMap.get(key);
+                if (existing) {
+                    const merged = {
+                        ...existing,
+                        ...inc,
+                        id: existing.id || Number(inc.id) || 1
+                    };
+                    if (JSON.stringify(existing) !== JSON.stringify(merged)) {
+                        livePlayersMap.set(key, merged);
+                        changed = true;
+                    }
+                } else {
+                    const usedIds = new Set(Array.from(livePlayersMap.values()).map(r => Number(r.id) || 0));
+                    let assignedId = Number(inc.id) || 1;
+                    if (usedIds.has(assignedId)) {
+                        assignedId = Math.max(0, ...usedIds) + 1;
+                    }
+                    livePlayersMap.set(key, {
+                        ...inc,
+                        id: assignedId
+                    });
+                    changed = true;
+                }
+            });
+
+            if (changed && persistLocal) {
+                try {
+                    const sorted = getMergedPlayersArray();
+                    localStorage.setItem(DB_FALLBACK_KEY, JSON.stringify(sorted));
+                } catch (e) {}
+            }
+            return changed;
+        }
+
+        function readLocalStoragesIntoMap() {
+            // 1. Leer JSON de respaldo en localStorage
+            try {
+                const raw = localStorage.getItem(DB_FALLBACK_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        mergePlayersIntoMap(parsed, false);
+                    }
+                }
+            } catch (e) {}
+
+            // 2. Leer binario SQLite en localStorage si está disponible
+            if (SQL_ENGINE) {
+                const savedBase64 = localStorage.getItem(DB_STORAGE_KEY);
+                if (savedBase64) {
+                    try {
+                        const binary = Uint8Array.from(atob(savedBase64), c => c.charCodeAt(0));
+                        const db = new SQL_ENGINE.Database(binary);
+                        const res = db.exec("SELECT * FROM jugadores ORDER BY id ASC;");
+                        db.close();
+                        if (res && res.length > 0) {
+                            const cols = res[0].columns;
+                            const sqliteRows = res[0].values.map(vals => {
+                                const obj = {};
+                                cols.forEach((c, i) => (obj[c] = vals[i]));
+                                return obj;
+                            });
+                            mergePlayersIntoMap(sqliteRows, false);
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+
+        function getMergedPlayersArray() {
+            return Array.from(livePlayersMap.values()).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        }
+
+        async function pullCloudPlayers() {
+            try {
+                const res = await fetch(`${CLOUD_SYNC_URL}/json?poll=1&since=24h`);
+                if (!res.ok) return;
+                const text = await res.text();
+                const lines = text.trim().split("\n");
+                const cloudRows = [];
+                lines.forEach(line => {
+                    if (!line) return;
+                    try {
+                        const evt = JSON.parse(line);
+                        if (evt && evt.event === "message" && evt.message) {
+                            const payload = JSON.parse(evt.message);
+                            if (payload && payload.type === "PLAYER_UPSERT" && payload.player && payload.player.nombre) {
+                                cloudRows.push(payload.player);
+                            }
+                        }
+                    } catch (err) {}
+                });
+                if (cloudRows.length > 0) {
+                    const updated = mergePlayersIntoMap(cloudRows, true);
+                    if (updated) renderDashboard();
+                }
+            } catch (e) {}
+        }
+
+        function startCloudSSE() {
+            if (typeof EventSource === "undefined") return;
+            try {
+                const es = new EventSource(`${CLOUD_SYNC_URL}/sse`);
+                es.onmessage = evt => {
+                    try {
+                        const data = JSON.parse(evt.data);
+                        if (data && data.message) {
+                            const payload = JSON.parse(data.message);
+                            if (payload && payload.type === "PLAYER_UPSERT" && payload.player) {
+                                mergePlayersIntoMap([payload.player], true);
+                                renderDashboard();
+                            }
+                        }
+                    } catch (e) {}
+                };
+            } catch (e) {}
+        }
 
         async function initSqlEngine() {
             try {
@@ -212,21 +382,76 @@
                     });
                 }
             } catch (e) {
-                console.warn("Usando lectura directa de registros SQL en localStorage:", e);
+                console.warn("Usando lectura directa de registros SQL:", e);
             }
+            readLocalStoragesIntoMap();
             renderDashboard();
+            await pullCloudPlayers();
+            startCloudSSE();
+
+            // Si fue abierto desde la ventana del juego, pedir sincronización inmediata
+            if (window.opener && !window.opener.closed) {
+                try {
+                    window.opener.postMessage({ type: "ADMIN_REQUEST_SQL_SYNC" }, "*");
+                } catch (e) {}
+            }
         }
 
         function queryDatabase(sqlQuery) {
-            // Intentar primero con el binario SQLite de sql.js
-            const savedBase64 = localStorage.getItem(DB_STORAGE_KEY);
-            if (SQL_ENGINE && savedBase64) {
+            readLocalStoragesIntoMap();
+            const masterRows = getMergedPlayersArray();
+
+            // Si SQL_ENGINE está cargado, construir tabla SQLite en memoria con todos los jugadores sincronizados para ejecutar cualquier consulta SQL real
+            if (SQL_ENGINE) {
                 try {
-                    const binary = Uint8Array.from(atob(savedBase64), c => c.charCodeAt(0));
-                    const db = new SQL_ENGINE.Database(binary);
-                    try { db.run("ALTER TABLE jugadores ADD COLUMN puntos INTEGER NOT NULL DEFAULT 0;"); } catch (e) {}
-                    try { db.run("ALTER TABLE jugadores ADD COLUMN puntos_nivel_disp INTEGER NOT NULL DEFAULT 500;"); } catch (e) {}
-                    try { db.run("ALTER TABLE jugadores ADD COLUMN bonus_rapidos INTEGER NOT NULL DEFAULT 0;"); } catch (e) {}
+                    const db = new SQL_ENGINE.Database();
+                    db.run(`
+                        CREATE TABLE jugadores (
+                            id INTEGER PRIMARY KEY,
+                            nombre TEXT,
+                            nivel_actual INTEGER,
+                            puntos INTEGER,
+                            puntos_nivel_disp INTEGER,
+                            bonus_rapidos INTEGER,
+                            pv INTEGER,
+                            pv_max INTEGER,
+                            pociones INTEGER,
+                            aciertos INTEGER,
+                            errores INTEGER,
+                            escudo INTEGER,
+                            piedra INTEGER,
+                            alas INTEGER,
+                            llave INTEGER,
+                            estado TEXT,
+                            fecha_registro TEXT,
+                            ultima_actualizacion TEXT
+                        );
+                    `);
+                    masterRows.forEach((r, idx) => {
+                        db.run(
+                            `INSERT OR REPLACE INTO jugadores VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+                            [
+                                Number(r.id) || (idx + 1),
+                                String(r.nombre || "Jugador"),
+                                Number(r.nivel_actual) || 1,
+                                Number(r.puntos) || 0,
+                                r.puntos_nivel_disp !== undefined ? Number(r.puntos_nivel_disp) : 500,
+                                Number(r.bonus_rapidos) || 0,
+                                r.pv !== undefined ? Number(r.pv) : 5,
+                                Number(r.pv_max) || 5,
+                                r.pociones !== undefined ? Number(r.pociones) : 1,
+                                Number(r.aciertos) || 0,
+                                Number(r.errores) || 0,
+                                Number(r.escudo) ? 1 : 0,
+                                Number(r.piedra) ? 1 : 0,
+                                Number(r.alas) ? 1 : 0,
+                                Number(r.llave) ? 1 : 0,
+                                String(r.estado || "En progreso"),
+                                String(r.fecha_registro || "—"),
+                                String(r.ultima_actualizacion || "—")
+                            ]
+                        );
+                    });
                     const res = db.exec(sqlQuery);
                     db.close();
                     if (!res || res.length === 0) return [];
@@ -237,21 +462,16 @@
                         return obj;
                     });
                 } catch (err) {
-                    console.warn("Error en consulta SQL personalizada, mostrando tabla completa:", err);
+                    console.warn("Error en consulta SQL personalizada, mostrando respaldo:", err);
                 }
             }
 
-            // Respaldo relacional JSON
-            try {
-                const raw = localStorage.getItem(DB_FALLBACK_KEY);
-                const rows = raw ? JSON.parse(raw) : [];
-                if (sqlQuery.toUpperCase().includes("DESC")) {
-                    return rows.sort((a, b) => (b.puntos || 0) - (a.puntos || 0) || b.nivel_actual - a.nivel_actual || b.aciertos - a.aciertos);
-                }
-                return rows.sort((a, b) => a.id - b.id);
-            } catch (e) {
-                return [];
+            // Respaldo relacional directo si wasm no cargó
+            const rows = [...masterRows];
+            if (String(sqlQuery).toUpperCase().includes("DESC")) {
+                return rows.sort((a, b) => (Number(b.puntos) || 0) - (Number(a.puntos) || 0) || (Number(b.nivel_actual) || 1) - (Number(a.nivel_actual) || 1));
             }
+            return rows.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
         }
 
         function renderDashboard(customQuery) {
@@ -380,7 +600,10 @@
             document.getElementById("custom-sql-input").value = q;
             renderDashboard(q);
         });
-        document.getElementById("btn-seed-demo").addEventListener("click", () => renderDashboard());
+        document.getElementById("btn-seed-demo").addEventListener("click", async () => {
+            await pullCloudPlayers();
+            renderDashboard();
+        });
 
         document.getElementById("btn-export-sql").addEventListener("click", () => {
             const allPlayers = queryDatabase("SELECT * FROM jugadores ORDER BY id ASC;");
@@ -402,13 +625,34 @@
             window.open("index.html", "_blank");
         });
 
-        // Escucha en tiempo real desde la ventana del juego
+        // Escucha en tiempo real desde la ventana del juego (BroadcastChannel, postMessage, storage y nube)
         if (typeof BroadcastChannel !== "undefined") {
             const ch = new BroadcastChannel("dinamica_quimica_realtime_sql");
-            ch.onmessage = () => renderDashboard();
+            ch.onmessage = e => {
+                if (e.data && Array.isArray(e.data.rows)) {
+                    mergePlayersIntoMap(e.data.rows, true);
+                } else if (e.data && e.data.changedRow) {
+                    mergePlayersIntoMap([e.data.changedRow], true);
+                }
+                renderDashboard();
+            };
         }
+        window.addEventListener("message", e => {
+            if (e.data && e.data.type === "SQL_FULL_SYNC" && Array.isArray(e.data.rows)) {
+                mergePlayersIntoMap(e.data.rows, true);
+                renderDashboard();
+            }
+        });
         window.addEventListener("storage", () => renderDashboard());
-        setInterval(() => renderDashboard(), 1200);
+        setInterval(() => {
+            if (window.opener && !window.opener.closed) {
+                try {
+                    window.opener.postMessage({ type: "ADMIN_REQUEST_SQL_SYNC" }, "*");
+                } catch (e) {}
+            }
+            renderDashboard();
+        }, 1200);
+        setInterval(() => pullCloudPlayers(), 4000);
 
         window.addEventListener("DOMContentLoaded", initSqlEngine);
     </script>
